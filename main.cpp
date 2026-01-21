@@ -278,8 +278,9 @@ namespace cpplox {
             throw std::runtime_error("could not open file " + fileName );
         }
 
-        const std::string fileContent { std::istreambuf_iterator<char>(infile), std::istreambuf_iterator<char>() };
-        run(fileContent);
+        // TODO: rather than loading all the fileContent make sure to parse the source code line by line
+        const std::string sCode { std::istreambuf_iterator<char>(infile), std::istreambuf_iterator<char>() };
+        run(sCode);
         hasError_ = false;
     }
 
