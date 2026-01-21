@@ -1,4 +1,5 @@
 #include <iostream>
+#include <map>
 #include <any>
 #include <vector>
 #include <cassert>
@@ -7,13 +8,15 @@
 #include <string_view>
 
 namespace cpplox {
-    // TODO: introduce an has error state and exit when you encounter an error
+    // TODO: find some way to remove this hasError_ or abstract it away in some class cpplox
+    bool hasError_ { false };
     void report(const int line, const std::string &where, const std::string &message) {
         std::cerr << "[" << line << "] Error " << where << ": " << message << std::endl;
     }
 
     void error(const int line, const std::string &message) {
         report(line, "", message);
+        hasError_ = true;
     }
 
     enum class TokenType {
@@ -30,7 +33,7 @@ namespace cpplox {
 
         // keywords
         AND, CLASS, ELSE, FALSE, FUN, FOR, IF, NIL, OR, PRINT, RETURN,
-        THIS, TRUE, VAR, WHILE,
+        THIS, TRUE, VAR, WHILE, SUPER,
 
         EOFF
     };
@@ -69,13 +72,15 @@ namespace cpplox {
     using Tokens = std::vector<Token>;
 
     class Scanner {
-        std::string_view code_;
         int start_ {0};
         int current_ { 0 };
         int line_ { 1 };
+        std::string_view code_;
         Tokens tokens_;
 
-        bool isEnd() {
+        std::map<std::string, TokenType> keywords;
+
+        bool isEnd() const {
             return current_ >= static_cast<int>(code_.size());
         }
 
@@ -109,16 +114,16 @@ namespace cpplox {
             addToken(TokenType::string, lexeme);
         }
 
-        bool isDigit(const char c) {
+        bool isDigit(const char c) const {
             return '0' <= c && c <= '9';
         }
 
-        char peek() {
+        char peek() const {
             if (isEnd()) return '\0';
             return code_[current_];
         }
 
-        char peekNext() {
+        char peekNext() const {
             if (current_ + 1 >= static_cast<int>(code_.length())) return '\0';
             return code_[current_ + 1];
         }
@@ -135,14 +140,36 @@ namespace cpplox {
             addToken(TokenType::number, lexeme);
         }
 
-        void addToken(TokenType type) {
+        void addToken(const TokenType type) {
             addToken(type, nullptr);
         }
 
-        void addToken(TokenType type, std::any literal) {
+        void addToken(TokenType type, const std::any& literal) {
             const int tokenSize = current_ - start_;
             std::string text { code_.substr(start_, tokenSize) };
             tokens_.emplace_back(type, text, literal, line_);
+        }
+
+       [[nodiscard]] bool isAlpha(const char c) const {
+            const bool isLower = 'a' <= c && c <= 'z';
+            const bool isUpper = 'A' <= c && c <= 'Z';
+            return isLower || isUpper || c == '_';
+        }
+
+        [[nodiscard]] bool isAlphaNum(const char c) const {
+            return isDigit(c) || isAlpha(c);
+        }
+
+        void identifier() {
+            while (isAlphaNum(peek())) advance();
+            const int identifierSize = current_ - start_;
+            const std::string identifier {code_.substr(start_, identifierSize )};
+            if (keywords.find(identifier) != keywords.end()) {
+                addToken(keywords[identifier]);
+                return;
+            }
+
+            addToken(TokenType::identifier);
         }
 
         void scanToken() {
@@ -164,7 +191,23 @@ namespace cpplox {
                 case '>': addToken(match('=') ? TokenType::GREATER_EQUAL : TokenType::GREATER); break;
                 case '/': {
                     if (match('/')) {
-                        while(peek() != '\n' || !isEnd()) advance();
+                        while(peek() != '\n' && !isEnd()) advance();
+                    } else if (match('*')) {
+                        while (!isEnd()) {
+                            bool commentEnd = peek() == '*' && peekNext() == '/';
+                            if (commentEnd) {
+                                break;
+                            }
+
+                            advance();
+                        }
+                        if (isEnd()) {
+                            error(line_, "Unclosed multiline comment");
+                        }
+
+                        // consume the comment ending tokens
+                        advance();
+                        advance();
                     } else {
                         addToken(TokenType::SLASH);
                     }
@@ -179,6 +222,8 @@ namespace cpplox {
                 default:
                     if (isDigit(c)) {
                         number();
+                    } else if (isAlpha(c)) {
+                        identifier();
                     } else {
                         error(line_, "Unexpected character.");
                     }
@@ -186,19 +231,43 @@ namespace cpplox {
             }
         }
 
-
     public:
-        explicit Scanner(const std::string_view &code) : code_(code) { }
+        explicit Scanner(const std::string_view &code) : code_(code) {
+            keywords["and"] = TokenType::AND;
+            keywords["class"] = TokenType::CLASS;
+            keywords["else"] = TokenType::ELSE;
+            keywords["false"] = TokenType::FALSE;
+            keywords["fun"] = TokenType::FUN;
+            keywords["for"] = TokenType::FOR;
+            keywords["if"] = TokenType::IF;
+            keywords["nil"] = TokenType::NIL;
+            keywords["or"] = TokenType::OR;
+            keywords["print"] = TokenType::PRINT;
+            keywords["return"] = TokenType::RETURN;
+            keywords["super"] = TokenType::SUPER;
+            keywords["this"] = TokenType::THIS;
+            keywords["true"] = TokenType::TRUE;
+            keywords["while"] = TokenType::WHILE;
+            keywords["var"] = TokenType::VAR;
+        }
 
         Tokens scan() {
-            Tokens tokens;
-            return tokens;
+            while (!isEnd()) {
+                start_ = current_;
+                scanToken();
+            }
+
+            tokens_.emplace_back(TokenType::EOFF, "", nullptr, line_);
+            return tokens_;
         }
     };
 
     void run(const std::string_view &code) {
         Scanner scanner { code };
         const Tokens tokens { scanner.scan() };
+        if (hasError_) {
+            exit(2);
+        }
         for (const auto &token : tokens) std::cout << token.toString() << std::endl;
     }
 
@@ -211,6 +280,7 @@ namespace cpplox {
 
         const std::string fileContent { std::istreambuf_iterator<char>(infile), std::istreambuf_iterator<char>() };
         run(fileContent);
+        hasError_ = false;
     }
 
     void runPrompt() {
