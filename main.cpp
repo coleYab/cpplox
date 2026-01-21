@@ -78,7 +78,7 @@ namespace cpplox {
         std::string_view code_;
         Tokens tokens_;
 
-        std::map<std::string, TokenType> keywords;
+        std::map<std::string, TokenType> keywords_;
 
         bool isEnd() const {
             return current_ >= static_cast<int>(code_.size());
@@ -164,8 +164,8 @@ namespace cpplox {
             while (isAlphaNum(peek())) advance();
             const int identifierSize = current_ - start_;
             const std::string identifier {code_.substr(start_, identifierSize )};
-            if (keywords.find(identifier) != keywords.end()) {
-                addToken(keywords[identifier]);
+            if (keywords_.find(identifier) != keywords_.end()) {
+                addToken(keywords_[identifier]);
                 return;
             }
 
@@ -233,22 +233,22 @@ namespace cpplox {
 
     public:
         explicit Scanner(const std::string_view &code) : code_(code) {
-            keywords["and"] = TokenType::AND;
-            keywords["class"] = TokenType::CLASS;
-            keywords["else"] = TokenType::ELSE;
-            keywords["false"] = TokenType::FALSE;
-            keywords["fun"] = TokenType::FUN;
-            keywords["for"] = TokenType::FOR;
-            keywords["if"] = TokenType::IF;
-            keywords["nil"] = TokenType::NIL;
-            keywords["or"] = TokenType::OR;
-            keywords["print"] = TokenType::PRINT;
-            keywords["return"] = TokenType::RETURN;
-            keywords["super"] = TokenType::SUPER;
-            keywords["this"] = TokenType::THIS;
-            keywords["true"] = TokenType::TRUE;
-            keywords["while"] = TokenType::WHILE;
-            keywords["var"] = TokenType::VAR;
+            keywords_["and"] = TokenType::AND;
+            keywords_["class"] = TokenType::CLASS;
+            keywords_["else"] = TokenType::ELSE;
+            keywords_["false"] = TokenType::FALSE;
+            keywords_["fun"] = TokenType::FUN;
+            keywords_["for"] = TokenType::FOR;
+            keywords_["if"] = TokenType::IF;
+            keywords_["nil"] = TokenType::NIL;
+            keywords_["or"] = TokenType::OR;
+            keywords_["print"] = TokenType::PRINT;
+            keywords_["return"] = TokenType::RETURN;
+            keywords_["super"] = TokenType::SUPER;
+            keywords_["this"] = TokenType::THIS;
+            keywords_["true"] = TokenType::TRUE;
+            keywords_["while"] = TokenType::WHILE;
+            keywords_["var"] = TokenType::VAR;
         }
 
         Tokens scan() {
