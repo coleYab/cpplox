@@ -1,6 +1,7 @@
 #include <iostream>
 #include <map>
 #include <any>
+#include <utility>
 #include <vector>
 #include <cassert>
 #include <fstream>
@@ -29,7 +30,7 @@ namespace cpplox {
         LESS, LESS_EQUAL,
 
         // literals
-        identifier, string, number,
+        IDENTIFIER, STRING, NUMBER,
 
         // keywords
         AND, CLASS, ELSE, FALSE, FUN, FOR, IF, NIL, OR, PRINT, RETURN,
@@ -71,6 +72,77 @@ namespace cpplox {
 
     using Tokens = std::vector<Token>;
 
+
+    class Binary;
+    class Grouping;
+    class Literal;
+    class Unary;
+
+    class Visitor {
+    public:
+        virtual ~Visitor() = default;
+        virtual std::any visitBinaryExpr(Binary& E) = 0;
+        virtual std::any visitGroupingExpr(Grouping& E) = 0;
+        virtual std::any visitLiteralExpr(Literal& E) = 0;
+        virtual std::any visitUnaryExpr(Unary& E) = 0;
+    };
+
+    class Expr {
+    public:
+        virtual std::any accept(Visitor& visitor) = 0;
+    };
+
+    class Binary : public Expr {
+    public:
+        Binary(std::shared_ptr<Expr> left, Token op, std::shared_ptr<Expr> right) : left(std::move(left)), op(std::move(op)), right(std::move(right)) {}
+
+        std::any accept(Visitor& visitor) override {
+            return visitor.visitBinaryExpr(*this);
+        }
+
+        const std::shared_ptr<Expr> left;
+        const Token op;
+        const std::shared_ptr<Expr> right;
+    };
+
+    class Grouping : public Expr {
+    public:
+        explicit Grouping(std::shared_ptr<Expr> expression) : expression(std::move(expression)) {}
+
+        std::any accept(Visitor& visitor) override {
+            return visitor.visitGroupingExpr(*this);
+        }
+
+        const std::shared_ptr<Expr> expression;
+    };
+
+    class Literal : public Expr {
+    public:
+        explicit Literal(std::any value) : value(std::move(value)) {}
+
+        std::any accept(Visitor& visitor) override {
+            return visitor.visitLiteralExpr(*this);
+        }
+
+        const std::any value;
+    };
+
+    class Unary : public Expr {
+    public:
+        Unary(Token op, std::shared_ptr<Expr> right) : op(std::move(op)), right(std::move(right)) {}
+
+        std::any accept(Visitor& visitor) override {
+            return visitor.visitUnaryExpr(*this);
+        }
+
+        const Token op;
+        const std::shared_ptr<Expr> right;
+    };
+
+
+    using Exprr = std::shared_ptr<Expr>;
+    using TokenTypes = std::vector<TokenType>;
+
     class Scanner {
         int start_ {0};
         int current_ { 0 };
@@ -111,7 +183,7 @@ namespace cpplox {
 
             advance();
             std::string lexeme { code_.substr(start_ + 1, current_ - 1)};
-            addToken(TokenType::string, lexeme);
+            addToken(TokenType::STRING, lexeme);
         }
 
         bool isDigit(const char c) const {
@@ -137,7 +209,7 @@ namespace cpplox {
 
             const int digSize = current_ - start_;
             std::string lexeme { code_.substr(start_, digSize)};
-            addToken(TokenType::number, lexeme);
+            addToken(TokenType::NUMBER, lexeme);
         }
 
         void addToken(const TokenType type) {
@@ -169,7 +241,7 @@ namespace cpplox {
                 return;
             }
 
-            addToken(TokenType::identifier);
+            addToken(TokenType::IDENTIFIER);
         }
 
         void scanToken() {
@@ -262,13 +334,222 @@ namespace cpplox {
         }
     };
 
+    class Parser {
+        Tokens tokens_;
+        int current {0};
+
+        Exprr term () {
+            Exprr expr = factor();
+
+            while (match({TokenType::MINUS, TokenType::PLUS})) {
+                Token op = previous();
+                Exprr right = factor();
+                expr = std::make_shared<Binary>(expr, op, right);
+            }
+
+            return expr;
+        }
+
+        Exprr factor() {
+            Exprr expr = unary();
+
+            while (match({TokenType::SLASH, TokenType::STAR})) {
+                Token op = previous();
+                Exprr right = unary();
+                expr = std::make_shared<Binary>(expr, op, right);
+            }
+
+            return expr;
+        }
+
+        Exprr unary() {
+            if (match({ TokenType::BANG, TokenType::MINUS})) {
+                Token op = previous();
+                Exprr right = unary();
+                return std::make_shared<Unary>(op, right);
+            }
+
+            return primary();
+        }
+
+        Exprr primary() {
+            if (match({TokenType::FALSE})) return std::make_shared<Literal>(false);
+            if (match({TokenType::TRUE})) return std::make_shared<Literal>(true);
+            if (match({TokenType::NIL})) return std::make_shared<Literal>(nullptr);
+
+            if (match({TokenType::NUMBER, TokenType::STRING})) return std::make_shared<Literal>(previous().getLiteral());
+
+            if (match({TokenType::LEFT_PAREN})) {
+                Exprr expr = expression();
+                consume(TokenType::RIGHT_PAREN, "Expect ')' after expression");
+                return std::make_shared<Grouping>(expr);
+            }
+
+            throw std::logic_error("Expected expression");
+        }
+
+        Token consume(const TokenType &type, const std::string &message) {
+            if (check(type)) return advance();
+            error(previous(), message);
+            throw std::logic_error(message);
+        }
+
+        static void error(const Token& token, const std::string &message) {
+            if (token.getType() == TokenType::EOFF) {
+                report(token.getLine(), " at end ", message);
+            } else {
+                report(token.getLine(), " at '" + token.getLexeme() + "'" , message);
+            }
+        }
+
+        void synchronize() {
+            advance();
+
+            while (!isEnd()) {
+                if (previous().getType() == TokenType::SEMICOLON) return;
+
+                switch (peek().getType()) {
+                    case TokenType::CLASS:
+                    case TokenType::FUN:
+                    case TokenType::VAR:
+                    case TokenType::FOR:
+                    case TokenType::IF:
+                    case TokenType::WHILE:
+                    case TokenType::PRINT:
+                    case TokenType::RETURN:
+                        return;
+                    default:
+                        break;
+                }
+
+                advance();
+            }
+        }
+
+        Exprr comparison() {
+            Exprr expr = term();
+
+            while (match({TokenType::GREATER, TokenType::GREATER_EQUAL, TokenType::LESS, TokenType::LESS_EQUAL})) {
+                Token op = previous();
+                Exprr right = term();
+                expr = std::make_shared<Binary>(expr, op, right);
+            }
+
+            return expr;
+        }
+
+        Exprr expression() {
+            Exprr expr = comparison();
+
+            while (match({TokenType::BANG_EQUAL, TokenType::EQUAL_EQUAL})) {
+                Token op = previous();
+                Exprr right = comparison();
+                expr = std::make_shared<Binary>(expr, op, right);
+            }
+
+            return expr;
+        }
+
+        Token peek() const {
+            return tokens_[current];
+        }
+
+        bool isEnd() const {
+            return peek().getType() == TokenType::EOFF;
+        }
+
+        Token previous() {
+            return tokens_[current - 1];
+        }
+
+        Token advance() {
+            if (!isEnd()) current++;
+            return previous();
+        }
+
+        bool check(TokenType type) {
+            if (isEnd()) return false;
+            return peek().getType() == type;
+        }
+
+        bool match(const TokenTypes &tokens) {
+            for (const auto &token : tokens) {
+                if (check(token)) {
+                    advance();
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+    public:
+        explicit Parser(Tokens tokens) : tokens_(std::move(tokens)) {}
+        Exprr parse() {
+            try {
+                return expression();
+            } catch (const std::logic_error &e){
+                return nullptr;
+            }
+        }
+    };
+
+    class AstPrinter : public Visitor {
+    public:
+        std::string print(Exprr expr) {
+            return std::any_cast<std::string>(expr->accept(*this));
+        }
+
+        std::any visitBinaryExpr(Binary& e) override {
+            return parenthesize(e.op.getLexeme(), {e.left, e.right});
+        }
+
+        std::any visitGroupingExpr(Grouping& e) override {
+            return parenthesize("group", {e.expression});
+        }
+
+        std::any visitLiteralExpr(Literal& e) override {
+            if (!e.value.has_value()) return std::string("nil");
+
+            // Handle different types stored in std::any
+            if (e.value.type() == typeid(std::string)) {
+                return std::any_cast<std::string>(e.value);
+            } else if (e.value.type() == typeid(double)) {
+                return std::to_string(std::any_cast<double>(e.value));
+            } else if (e.value.type() == typeid(bool)) {
+                return std::any_cast<bool>(e.value) ? std::string("true") : std::string("false");
+            }
+
+            return std::string("?");
+        }
+
+        std::any visitUnaryExpr(Unary& e) override {
+            return parenthesize(e.op.getLexeme(), {e.right});
+        }
+
+    private:
+        std::string parenthesize(const std::string& name, const std::vector<Exprr>& exprs) {
+            std::string result = "(" + name;
+            for (const auto& expr : exprs) {
+                result += " ";
+                result += std::any_cast<std::string>(expr->accept(*this));
+            }
+            result += ")";
+            return result;
+        }
+    };
+
     void run(const std::string_view &code) {
         Scanner scanner { code };
         const Tokens tokens { scanner.scan() };
         if (hasError_) {
             exit(2);
         }
-        for (const auto &token : tokens) std::cout << token.toString() << std::endl;
+
+        Parser parser { tokens };
+        const Exprr expr = parser.parse();
+        AstPrinter printer;
+        std::cout << printer.print(expr) << std::endl;
     }
 
     void runFile(const std::string& fileName) {
