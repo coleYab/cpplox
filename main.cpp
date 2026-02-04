@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <iostream>
 #include <map>
 #include <any>
@@ -222,7 +223,7 @@ namespace cpplox {
             }
 
             const int digSize = current_ - start_;
-            std::string lexeme{code_.substr(start_, digSize)};
+            const std::string lexeme{code_.substr(start_, digSize)};
             addToken(TokenType::NUMBER, std::stod(lexeme));
         }
 
@@ -241,7 +242,7 @@ namespace cpplox {
             while (isAlphaNum(peek())) advance();
             const int identifierSize = current_ - start_;
             const std::string identifier{code_.substr(start_, identifierSize)};
-            if (keywords_.find(identifier) != keywords_.end()) {
+            if (keywords_.contains(identifier)) {
                 addToken(keywords_[identifier]);
                 return;
             }
@@ -250,8 +251,7 @@ namespace cpplox {
         }
 
         void scanToken() {
-            char c = advance();
-            switch (c) {
+            switch (const char c = advance()) {
                 case '(': addToken(TokenType::LEFT_PAREN);
                     break;
                 case ')': addToken(TokenType::RIGHT_PAREN);
@@ -535,12 +535,15 @@ namespace cpplox {
         std::any visitLiteralExpr(Literal &e) override {
             if (!e.value.has_value()) return std::string("nil");
 
-            // Handle different types stored in std::any
             if (e.value.type() == typeid(std::string)) {
                 return std::any_cast<std::string>(e.value);
-            } else if (e.value.type() == typeid(double)) {
+            }
+
+            if (e.value.type() == typeid(double)) {
                 return std::to_string(std::any_cast<double>(e.value));
-            } else if (e.value.type() == typeid(bool)) {
+            }
+
+            if (e.value.type() == typeid(bool)) {
                 return std::any_cast<bool>(e.value) ? std::string("true") : std::string("false");
             }
 
@@ -563,8 +566,27 @@ namespace cpplox {
         }
     };
 
+
+    // TODO: please use isAddSupported, isStarSupported, isCompSupported, isSlashSupported and others to help for validation.
     class Helper {
     public:
+        static bool isAddSupported(const std::any &left, const std::any &right) {
+            return true;
+        }
+
+        static bool isStarSupported(const std::any &left, const std::any &right) {
+            return true;
+        }
+
+        // Use it when you have is greater, is less than
+        static bool isCompSupported(const std::any &left, const std::any &right) {
+            return true;
+        }
+
+        static bool isSlashSupported(const std::any &left, const std::any &right) {
+            return true;
+        }
+
         static bool isNumber(const std::any &x) noexcept {
             return x.type() == typeid(int) || x.type() == typeid(double);
         }
@@ -664,8 +686,6 @@ namespace cpplox {
 
     class Interpreter : public Visitor {
         std::any visitLiteralExpr(Literal &exp) override {
-            // now here do the typechecking
-            // if (exp.)
             return exp.value;
         }
 
@@ -690,8 +710,7 @@ namespace cpplox {
                 default: return nullptr;
             }
 
-            // assert(false, "this block is unreachable");
-            return nullptr;
+            assert(false && "reached here");
         }
 
         std::any visitBinaryExpr(Binary &expr) override {
