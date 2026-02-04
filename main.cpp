@@ -96,6 +96,8 @@ namespace cpplox {
 
     class Expr {
     public:
+        virtual ~Expr() = default;
+
         virtual std::any accept(Visitor &visitor) = 0;
     };
 
@@ -152,7 +154,7 @@ namespace cpplox {
     };
 
 
-    using Exprr = std::shared_ptr<Expr>;
+    using Expression = std::shared_ptr<Expr>;
     using TokenTypes = std::vector<TokenType>;
 
     class Scanner {
@@ -356,41 +358,41 @@ namespace cpplox {
         Tokens tokens_;
         int current{0};
 
-        Exprr term() {
-            Exprr expr = factor();
+        Expression term() {
+            Expression expr = factor();
 
             while (match({TokenType::MINUS, TokenType::PLUS})) {
                 Token op = previous();
-                Exprr right = factor();
+                Expression right = factor();
                 expr = std::make_shared<Binary>(expr, op, right);
             }
 
             return expr;
         }
 
-        Exprr factor() {
-            Exprr expr = unary();
+        Expression factor() {
+            Expression expr = unary();
 
             while (match({TokenType::SLASH, TokenType::STAR})) {
                 Token op = previous();
-                Exprr right = unary();
+                Expression right = unary();
                 expr = std::make_shared<Binary>(expr, op, right);
             }
 
             return expr;
         }
 
-        Exprr unary() {
+        Expression unary() {
             if (match({TokenType::BANG, TokenType::MINUS})) {
                 Token op = previous();
-                Exprr right = unary();
+                Expression right = unary();
                 return std::make_shared<Unary>(op, right);
             }
 
             return primary();
         }
 
-        Exprr primary() {
+        Expression primary() {
             if (match({TokenType::FALSE})) return std::make_shared<Literal>(false);
             if (match({TokenType::TRUE})) return std::make_shared<Literal>(true);
             if (match({TokenType::NIL})) return std::make_shared<Literal>(nullptr);
@@ -400,7 +402,7 @@ namespace cpplox {
                     Literal>(previous().getLiteral());
 
             if (match({TokenType::LEFT_PAREN})) {
-                Exprr expr = expression();
+                Expression expr = expression();
                 consume(TokenType::RIGHT_PAREN, "Expect ')' after expression");
                 return std::make_shared<Grouping>(expr);
             }
@@ -446,24 +448,24 @@ namespace cpplox {
             }
         }
 
-        Exprr comparison() {
-            Exprr expr = term();
+        Expression comparison() {
+            Expression expr = term();
 
             while (match({TokenType::GREATER, TokenType::GREATER_EQUAL, TokenType::LESS, TokenType::LESS_EQUAL})) {
                 Token op = previous();
-                Exprr right = term();
+                Expression right = term();
                 expr = std::make_shared<Binary>(expr, op, right);
             }
 
             return expr;
         }
 
-        Exprr expression() {
-            Exprr expr = comparison();
+        Expression expression() {
+            Expression expr = comparison();
 
             while (match({TokenType::BANG_EQUAL, TokenType::EQUAL_EQUAL})) {
                 Token op = previous();
-                Exprr right = comparison();
+                Expression right = comparison();
                 expr = std::make_shared<Binary>(expr, op, right);
             }
 
@@ -507,7 +509,7 @@ namespace cpplox {
         explicit Parser(Tokens tokens) : tokens_(std::move(tokens)) {
         }
 
-        Exprr parse() {
+        Expression parse() {
             try {
                 return expression();
             } catch (const std::logic_error &e) {
@@ -518,7 +520,7 @@ namespace cpplox {
 
     class AstPrinter : public Visitor {
     public:
-        std::string print(const Exprr &expr) {
+        std::string print(const Expression &expr) {
             return std::any_cast<std::string>(expr->accept(*this));
         }
 
@@ -550,7 +552,7 @@ namespace cpplox {
         }
 
     private:
-        std::string parenthesize(const std::string &name, const std::vector<Exprr> &expressions) {
+        std::string parenthesize(const std::string &name, const std::vector<Expression> &expressions) {
             std::string result = "(" + name;
             for (const auto &expr: expressions) {
                 result += " ";
@@ -671,7 +673,7 @@ namespace cpplox {
             return evaluate(exp.expression);
         }
 
-        std::any evaluate(const Exprr &expr) {
+        std::any evaluate(const Expression &expr) {
             return expr->accept(*this);
         }
 
@@ -750,7 +752,7 @@ namespace cpplox {
         }
 
     public:
-        void interpret(const Exprr &expr) {
+        void interpret(const Expression &expr) {
             try {
                 const auto value = evaluate(expr);
                 std::cout << "Value is " << Helper::toString(value) << std::endl;
@@ -768,7 +770,7 @@ namespace cpplox {
         }
 
         Parser parser{tokens};
-        const Exprr expr = parser.parse();
+        const Expression expr = parser.parse();
         AstPrinter printer;
         std::cout << printer.print(expr) << std::endl;
 
