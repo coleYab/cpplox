@@ -589,6 +589,14 @@ namespace cpplox {
             }
         }
 
+        static std::string toString(const std::any &x) {
+            if (isNumber(x)) return std::to_string(getNumber(x));
+            if (isBoolean(x)) return (getBoolean(x) == true ? "true" : "false");
+            if (isString(x)) return getString(x);
+            return "unknown or unsupported value"; // or call internal implementation of to string
+        }
+
+
         static bool isTruthy(const std::any &obj) noexcept {
             if (!obj.has_value()) return false;
 
@@ -745,9 +753,7 @@ namespace cpplox {
         void interpret(const Exprr &expr) {
             try {
                 const auto value = evaluate(expr);
-                if (Helper::isNumber(value)) {
-                    std::cout << "Value is: " << std::any_cast<double>(value) << std::endl;
-                }
+                std::cout << "Value is " << Helper::toString(value) << std::endl;
             } catch (std::exception &e) {
                 std::cout << "Some error happened" << e.what() << std::endl;
             }
