@@ -90,6 +90,7 @@ namespace cpplox {
     class Unary;
     class Variable;
     class Assign;
+    class Logical;
 
     class Visitor {
     public:
@@ -106,6 +107,8 @@ namespace cpplox {
         virtual std::any visitVariableExpr(Variable &E) = 0;
 
         virtual std::any visitAssignExpr(Assign &E) = 0;
+
+        virtual std::any visitLogicalExpr(Logical &E) = 0;
     };
 
     class Expr {
@@ -154,6 +157,20 @@ namespace cpplox {
         const std::any value;
     };
 
+    class Logical : public Expr {
+    public:
+        std::shared_ptr<Expr> left;
+        Token op;
+        std::shared_ptr<Expr> right;
+
+        Logical(std::shared_ptr<Expr> left, Token op, std::shared_ptr<Expr> right) : left(std::move(left)),
+            op(std::move(op)), right(std::move(right)) {
+        }
+
+        std::any accept(Visitor &visitor) override {
+            return visitor.visitLogicalExpr(*this);
+        }
+    };
 
     class Unary : public Expr {
     public:
@@ -172,20 +189,23 @@ namespace cpplox {
     public:
         Token name;
 
-        explicit Variable(Token name) : name(std::move(name)) {}
+        explicit Variable(Token name) : name(std::move(name)) {
+        }
 
         std::any accept(Visitor &visitor) override {
             return visitor.visitVariableExpr(*this);
         }
     };
+
     class Assign : public Expr {
     public:
         Token name;
         std::shared_ptr<Expr> value;
 
-        Assign(Token name, std::shared_ptr<Expr> value) : name(std::move(name)), value(std::move(value)) {}
+        Assign(Token name, std::shared_ptr<Expr> value) : name(std::move(name)), value(std::move(value)) {
+        }
 
-        std::any accept(Visitor& visitor) override {
+        std::any accept(Visitor &visitor) override {
             return visitor.visitAssignExpr(*this);
         }
     };
@@ -196,20 +216,30 @@ namespace cpplox {
     class Print;
     class Var;
     class Block;
+    class If;
+    class While;
 
     class Stmt {
     public:
         class Visitor {
         public:
             virtual ~Visitor() = default;
-            virtual std::any visitSExpressionStmt(const Expression&) = 0;
-            virtual std::any visitPrintStmt(const Print&) = 0;
-            virtual std::any visitVarStmt(const Var&) = 0;
-            virtual std::any visitBlockStmt(const Block&) = 0;
 
+            virtual std::any visitSExpressionStmt(const Expression &) = 0;
+
+            virtual std::any visitPrintStmt(const Print &) = 0;
+
+            virtual std::any visitVarStmt(const Var &) = 0;
+
+            virtual std::any visitBlockStmt(const Block &) = 0;
+
+            virtual std::any visitIfStmt(const If &) = 0;
+
+            virtual std::any visitWhileStmt(const While &) = 0;
         };
 
         virtual ~Stmt() = default;
+
         virtual std::any accept(Visitor &visitor) = 0;
     };
 
@@ -217,9 +247,10 @@ namespace cpplox {
     public:
         std::shared_ptr<Expr> expression;
 
-        explicit Expression(std::shared_ptr<Expr> expression) : expression(std::move(expression)) {}
+        explicit Expression(std::shared_ptr<Expr> expression) : expression(std::move(expression)) {
+        }
 
-        std::any accept(Stmt::Visitor& visitor) override {
+        std::any accept(Stmt::Visitor &visitor) override {
             return visitor.visitSExpressionStmt(*this);
         }
     };
@@ -228,9 +259,10 @@ namespace cpplox {
     public:
         std::shared_ptr<Expr> expression;
 
-        explicit Print(std::shared_ptr<Expr> expression) : expression(std::move(expression)) {}
+        explicit Print(std::shared_ptr<Expr> expression) : expression(std::move(expression)) {
+        }
 
-        std::any accept(Stmt::Visitor& visitor) override {
+        std::any accept(Stmt::Visitor &visitor) override {
             return visitor.visitPrintStmt(*this);
         }
     };
@@ -240,7 +272,9 @@ namespace cpplox {
         Token name;
         std::shared_ptr<Expr> initializer;
 
-        Var(Token  name, std::shared_ptr<Expr> initializer) : name(std::move(name)), initializer(std::move(initializer)) {}
+        Var(Token name, std::shared_ptr<Expr> initializer) : name(std::move(name)),
+                                                             initializer(std::move(initializer)) {
+        }
 
         std::any accept(Stmt::Visitor &visitor) override {
             return visitor.visitVarStmt(*this);
@@ -249,12 +283,43 @@ namespace cpplox {
 
     class Block : public Stmt {
     public:
-        std::vector<std::shared_ptr<Stmt>> statements;
+        std::vector<std::shared_ptr<Stmt> > statements;
 
-        explicit Block(std::vector<std::shared_ptr<Stmt>> statements) : statements(std::move(statements)) {}
+        explicit Block(std::vector<std::shared_ptr<Stmt> > statements) : statements(std::move(statements)) {
+        }
 
         std::any accept(Stmt::Visitor &visitor) override {
             return visitor.visitBlockStmt(*this);
+        }
+    };
+
+    class If : public Stmt {
+    public:
+        std::shared_ptr<Expr> condition;
+        std::shared_ptr<Stmt> thenBranch;
+        std::shared_ptr<Stmt> elseBranch;
+
+        If(std::shared_ptr<Expr> condition, std::shared_ptr<Stmt> thenBranch,
+           std::shared_ptr<Stmt> elseBranch) : condition(std::move(condition)), thenBranch(std::move(thenBranch)),
+                                               elseBranch(std::move(elseBranch)) {
+        }
+
+        std::any accept(Stmt::Visitor &visitor) override {
+            return visitor.visitIfStmt(*this);
+        }
+    };
+
+    class While : public Stmt {
+    public:
+        std::shared_ptr<Expr> condition;
+        std::shared_ptr<Stmt> body;
+
+        While(std::shared_ptr<Expr> condition, std::shared_ptr<Stmt> body) : condition(std::move(condition)),
+                                                                             body(std::move(body)) {
+        }
+
+        std::any accept(Stmt::Visitor &visitor) override {
+            return visitor.visitWhileStmt(*this);
         }
     };
 
@@ -386,7 +451,8 @@ namespace cpplox {
                     break;
                 case '>': addToken(match('=') ? TokenType::GREATER_EQUAL : TokenType::GREATER);
                     break;
-                case '"': parseString(); break;
+                case '"': parseString();
+                    break;
                 case '/': {
                     if (match('/')) {
                         while (peek() != '\n' && !isEnd()) advance();
@@ -575,7 +641,10 @@ namespace cpplox {
         SExpression comparison() {
             SExpression expr = term();
 
-            while (match({TokenType::GREATER, TokenType::GREATER_EQUAL, TokenType::LESS, TokenType::LESS_EQUAL, TokenType::AND, TokenType::OR})) {
+            while (match({
+                TokenType::GREATER, TokenType::GREATER_EQUAL, TokenType::LESS, TokenType::LESS_EQUAL, TokenType::AND,
+                TokenType::OR
+            })) {
                 Token op = previous();
                 SExpression right = term();
                 expr = std::make_shared<Binary>(expr, op, right);
@@ -584,16 +653,39 @@ namespace cpplox {
             return expr;
         }
 
+        SExpression gAnd() {
+            SExpression expr = equality();
+
+            while (match({TokenType::AND})) {
+                Token op = previous();
+                SExpression right = equality();
+                expr = std::make_shared<Logical>(expr, op, right);
+            }
+
+            return expr;
+        }
+
+        SExpression gOr() {
+            SExpression expr = gAnd();
+
+            while (match({TokenType::OR})) {
+                Token op = previous();
+                SExpression right = equality();
+                expr = std::make_shared<Logical>(expr, op, right);
+            }
+
+            return expr;
+        }
+
         SExpression assignment() {
-            SExpression expression = equality();
+            SExpression expression = gOr();
 
             if (match({TokenType::EQUAL})) {
                 Token equals = previous();
                 SExpression value = assignment();
 
-                if (typeid(expression.get()) == typeid(Variable)) {
-                    Token name = std::any_cast<Variable>(value).name;
-                    return std::make_shared<Assign>(name, value);
+                if (auto v = dynamic_cast<Variable *>(expression.get())) {
+                    return std::make_shared<Assign>(v->name, value);
                 }
             }
 
@@ -669,11 +761,86 @@ namespace cpplox {
             return statements;
         }
 
+        Statement ifStatement() {
+            consume(TokenType::LEFT_PAREN, "Expect ( after the 'if' statement.");
+            SExpression condition = expression();
+            consume(TokenType::RIGHT_PAREN, "Expect ) after the condition in an if statement");
 
+            Statement thenBranch = statement();
+            Statement elseBranch = nullptr;
+            if (match({TokenType::ELSE})) {
+                elseBranch = statement();
+            }
+
+            return std::make_shared<If>(condition, thenBranch, elseBranch);
+        }
+
+        Statement whileStatement() {
+            consume(TokenType::LEFT_PAREN, "Expect ( after while statement");
+            SExpression condition = expression();
+            consume(TokenType::RIGHT_PAREN, "Expect ) after the end of condition");
+            Statement body = statement();
+            return std::make_shared<While>(condition, body);
+        }
+
+
+        // this funciton is changing for (int i = 0; i < n; i++) to
+        // var i = 0; while (i < n) { i += 1;}
+        Statement forStatement() {
+            consume(TokenType::LEFT_PAREN, "Expect ( after for statement");
+
+            // for -> initializer | none; condition | none; statement | null
+            Statement initializer;
+            if (match({TokenType::SEMICOLON})) {
+                initializer = nullptr;
+            } else if (match({TokenType::VAR})) {
+                initializer = varDeclaration();
+            } else {
+                initializer = expressionStmt();
+            }
+
+            SExpression condition = nullptr;
+            if (!check(TokenType::SEMICOLON)) {
+                condition = expression();
+            }
+
+            consume(TokenType::SEMICOLON, "Expect ; after a loop condition");
+
+            SExpression increment = nullptr;
+            if (!check(TokenType::RIGHT_PAREN)) {
+                increment = expression();
+            }
+
+            consume(TokenType::RIGHT_PAREN, "Expect ) after the end of a loop statement");
+
+            Statement body = statement();
+
+            if (increment != nullptr) {
+                body = std::make_shared<Block>(Stmts{body, std::make_shared<Expression>(increment)});
+            }
+
+            if (condition == nullptr) condition = std::make_shared<Literal>(true);
+            body = std::make_shared<While>(condition, body);
+
+            if (initializer != nullptr) {
+                body = std::make_shared<Block>(Stmts{initializer, body});
+            }
+
+            return body;
+        }
 
         Statement statement() {
+            if (match({TokenType::IF})) {
+                return ifStatement();
+            }
             if (match({TokenType::PRINT})) {
                 return printStmt();
+            }
+            if (match({TokenType::WHILE})) {
+                return whileStatement();
+            }
+            if (match({TokenType::FOR})) {
+                return forStatement();
             }
             if (match({TokenType::LEFT_BRACE})) {
                 return std::make_shared<Block>(block());
@@ -725,7 +892,6 @@ namespace cpplox {
         //         return nullptr;
         //     }
         // }
-
     };
 
     class AstPrinter : public Visitor {
@@ -839,8 +1005,8 @@ namespace cpplox {
             if (obj.type() == typeid(bool))
                 return std::any_cast<bool>(obj);
 
-            if (obj.type() == typeid(int))
-                return std::any_cast<int>(obj) != 0;
+            if (obj.type() == typeid(double))
+                return std::any_cast<double>(obj) != static_cast<double>(0);
 
             if (obj.type() == typeid(std::string))
                 return !std::any_cast<std::string>(obj).empty();
@@ -878,7 +1044,7 @@ namespace cpplox {
         }
 
         static bool isLess(const std::any &left, const std::any &right) {
-            if (!isSameType(left, right) || !isEqual(left, right)) return false;
+            if (!isSameType(left, right) || isEqual(left, right)) return false;
             if (isGreater(left, right)) return false;
             return true;
         }
@@ -909,9 +1075,15 @@ namespace cpplox {
         std::unique_ptr<Environment> enclosing;
         std::map<std::string, std::any> values;
 
-        explicit Environment(std::unique_ptr<Environment> enclosing = nullptr) : enclosing(std::move(enclosing)), values(std::map<std::string, std::any>{}){ }
+        explicit Environment(std::unique_ptr<Environment> enclosing = nullptr) : enclosing(std::move(enclosing)),
+            values(std::map<std::string, std::any>{}) {
+        }
 
         void define(const std::string &name, std::any value) {
+            // if (values.contains(name)) {
+            //     throw RuntimeError{};
+            // }
+
             values[name] = std::move(value);
         }
 
@@ -934,7 +1106,8 @@ namespace cpplox {
             }
 
             if (enclosing != nullptr) {
-                return enclosing->assign(name, value);
+                enclosing->assign(name, value);
+                return;
             }
 
             throw RuntimeError();
@@ -944,11 +1117,11 @@ namespace cpplox {
     class Interpreter : public Visitor, public Stmt::Visitor {
         Environment env;
 
-        void executeBlock(const Stmts& statements) {
+        void executeBlock(const Stmts &statements) {
             // auto prev = std::move(env);
             try {
                 // env = std::move(nenv);
-                for (const auto& statement : statements) {
+                for (const auto &statement: statements) {
                     execute(statement);
                 }
             } catch (...) {
@@ -959,6 +1132,28 @@ namespace cpplox {
             // env = std::move(prev);
         }
 
+        std::any visitIfStmt(const If &stmt) override {
+            if (Helper::isTruthy(evaluate(stmt.condition))) {
+                execute(stmt.thenBranch);
+            } else if (stmt.elseBranch != nullptr) {
+                execute(stmt.elseBranch);
+            }
+
+            return nullptr;
+        }
+
+        std::any visitLogicalExpr(Logical &expr) override {
+            std::any left = evaluate(expr.left);
+
+            if (expr.op.getType() == TokenType::AND) {
+                if (!Helper::isTruthy(left)) return left;
+            } else {
+                if (Helper::isTruthy(left)) return left;
+            }
+
+            return evaluate(expr.right);
+        }
+
         std::any visitBlockStmt(const Block &block) override {
             executeBlock(block.statements);
             // executeBlock(block.statements, Environment{std::make_unique<Environment>(env)});
@@ -967,6 +1162,14 @@ namespace cpplox {
 
         std::any visitLiteralExpr(Literal &exp) override {
             return exp.value;
+        }
+
+        std::any visitWhileStmt(const While &stmt) override {
+            while (Helper::isTruthy(evaluate(stmt.condition))) {
+                execute(stmt.body);
+            }
+
+            return nullptr;
         }
 
         std::any visitSExpressionStmt(const Expression &stmt) override {
@@ -1080,12 +1283,12 @@ namespace cpplox {
                 case TokenType::LESS_EQUAL: {
                     return Helper::isLessEqual(left, right);
                 }
-                case TokenType::AND: {
-                    return Helper::isAnd(left, right);
-                }
-                case TokenType::OR: {
-                    return Helper::isOr(left, right);
-                }
+                // case TokenType::AND: {
+                //     return Helper::isAnd(left, right);
+                // }
+                // case TokenType::OR: {
+                //     return Helper::isOr(left, right);
+                // }
                 default: ;
             }
 
@@ -1104,7 +1307,7 @@ namespace cpplox {
 
         void interpret(const Stmts &stmts) {
             try {
-                for (const auto &stmt : stmts) {
+                for (const auto &stmt: stmts) {
                     execute(stmt);
                 }
             } catch (...) {
@@ -1123,7 +1326,6 @@ namespace cpplox {
         if (hasError_) {
             exit(2);
         }
-
 
 
         Parser parser{tokens};
