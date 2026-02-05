@@ -1,0 +1,33 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y g++
+
+      - name: Build
+        run: |
+          make clean
+          make build
+
+      - name: Package binary
+        run: |
+          mkdir dist
+          cp build/cpplox dist/cpplox
+          tar -czf cpplox-linux.tar.gz dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: cpplox-linux.tar.gz
