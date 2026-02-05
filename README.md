@@ -9,45 +9,44 @@ The project implements a tree-walk interpreter with a complete pipeline, lexical
 This repository is intended as an educational and experimental implementation of language runtime concepts using modern C++.
 
 ## Features
-[x] Implemented
+- [x] Implemented
 
-[x] Interactive REPL
+- [x] Interactive REPL
 
-[x] Script execution from file
+- [x] Script execution from file
 
-[x] Scanner (lexer) with error reporting
+- [x] Scanner (lexer) with error reporting
 
-[x] Recursive-descent parser
+- [x] Recursive-descent parser
 
-[x] Abstract Syntax Tree (AST)
+- [x] Abstract Syntax Tree (AST)
 
-[x] Visitor-based evaluation
+- [x] Visitor-based evaluation
 
-[x] Tree-walk interpreter
+- [x] Tree-walk interpreter
 
-[x] Dynamic typing (std::any)
+- [x] Dynamic typing (std::any)
 
-[x] Variable declarations and assignments
+- [x] Variable declarations and assignments
 
-[x] Lexical scoping with nested environments
+- [x] Lexical scoping with nested environments
 
-[x] Arithmetic, comparison, and logical operators
+- [x] Arithmetic, comparison, and logical operators
 
-[x] print statements
+- [x] print statements
 
-[x] Single-line (//) and multi-line (/* */) comments
+- [x] Single-line (//) and multi-line (/* */) comments
 
 ## TODO
+- [ ] Control flow (if, while, for)
 
-[ ] Control flow (if, while, for)
+- [ ] Functions and closures
 
-[ ] Functions and closures
+- [ ] Classes and inheritance
 
-[ ] Classes and inheritance
+- [ ] Static resolver pass
 
-[ ] Static resolver pass
-
-[ ] Detailed runtime error diagnostics
+- [ ] Detailed runtime error diagnostics
 
 ## Example
 
@@ -151,15 +150,15 @@ If you want to give a full file to the interpreter you can just simply run.
 
 ## Roadmap
 
-[ ] Implement control flow statements
+- [ ] Implement control flow statements
 
-[ ] Add functions and closures
+- [ ] Add functions and closures
 
-[ ] Replace std::any with std::variant
+- [ ] Replace std::any with std::variant
 
-[ ] Improve runtime diagnostics
+- [ ] Improve runtime diagnostics
 
-[ ] Optional bytecode VM backend
+- [ ] Optional bytecode VM backend
 
 ## References
 
