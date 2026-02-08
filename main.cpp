@@ -5,10 +5,12 @@
 #include <utility>
 #include <vector>
 #include <cassert>
+#include <complex>
 #include <fstream>
 #include <filesystem>
 #include <string_view>
 #include "includes/utils.h"
+#include <functional>
 
 namespace cpplox {
     // TODO: find some way to remove this hasError_ or abstract it away in some class cpplox
@@ -91,6 +93,8 @@ namespace cpplox {
     class Variable;
     class Assign;
     class Logical;
+    class Call;
+    class Return;
 
     class Visitor {
     public:
@@ -109,6 +113,8 @@ namespace cpplox {
         virtual std::any visitAssignExpr(Assign &E) = 0;
 
         virtual std::any visitLogicalExpr(Logical &E) = 0;
+
+        virtual std::any visitCallExpr(Call &E) = 0;
     };
 
     class Expr {
@@ -117,6 +123,7 @@ namespace cpplox {
 
         virtual std::any accept(Visitor &visitor) = 0;
     };
+
 
     class Binary : public Expr {
     public:
@@ -132,6 +139,23 @@ namespace cpplox {
         const Token op;
         const std::shared_ptr<Expr> right;
     };
+
+    class Call : public Expr {
+    public:
+        std::shared_ptr<Expr> callee;
+        Token par;
+        std::vector<std::shared_ptr<Expr> > arguments;
+
+        Call(std::shared_ptr<Expr> callee, Token par,
+             std::vector<std::shared_ptr<Expr> > arguments) : callee(std::move(callee)), par(std::move(par)),
+                                                              arguments(std::move(arguments)) {
+        }
+
+        std::any accept(Visitor &visitor) override {
+            return visitor.visitCallExpr(*this);
+        }
+    };
+
 
     class Grouping : public Expr {
     public:
@@ -218,6 +242,7 @@ namespace cpplox {
     class Block;
     class If;
     class While;
+    class Function;
 
     class Stmt {
     public:
@@ -235,6 +260,10 @@ namespace cpplox {
 
             virtual std::any visitIfStmt(const If &) = 0;
 
+            virtual std::any visitFunctionStmt(const Function &) = 0;
+
+            virtual std::any visitReturnStmt(Return &) = 0;
+
             virtual std::any visitWhileStmt(const While &) = 0;
         };
 
@@ -242,6 +271,21 @@ namespace cpplox {
 
         virtual std::any accept(Visitor &visitor) = 0;
     };
+
+
+    class Return : public Stmt {
+    public:
+        Token keyword;
+        std::shared_ptr<Expr> value;
+
+        Return(Token keyword, std::shared_ptr<Expr> value) : keyword(std::move(keyword)), value(std::move(value)) {
+        }
+
+        std::any accept(Visitor &visitor) override {
+            return visitor.visitReturnStmt(*this);
+        }
+    };
+
 
     class Expression : public Stmt {
     public:
@@ -264,6 +308,21 @@ namespace cpplox {
 
         std::any accept(Stmt::Visitor &visitor) override {
             return visitor.visitPrintStmt(*this);
+        }
+    };
+
+    class Function : public Stmt {
+    public:
+        Token name;
+        std::vector<Token> params;
+        std::vector<std::shared_ptr<Stmt> > body;
+
+        Function(Token name, Tokens params, std::vector<std::shared_ptr<Stmt> > body) : name(std::move(name)),
+            params(std::move(params)), body(std::move(body)) {
+        }
+
+        std::any accept(Visitor &visitor) override {
+            return visitor.visitFunctionStmt(*this);
         }
     };
 
@@ -327,6 +386,8 @@ namespace cpplox {
     using SExpression = std::shared_ptr<Expr>;
     using TokenTypes = std::vector<TokenType>;
     using Stmts = std::vector<Statement>;
+    using Expressions = std::vector<SExpression>;
+    class LoxFunction;
 
     class Scanner {
         int start_{0};
@@ -527,6 +588,7 @@ namespace cpplox {
         }
     };
 
+
     class Parser {
         Tokens tokens_;
         int current{0};
@@ -555,6 +617,32 @@ namespace cpplox {
             return expr;
         }
 
+        SExpression finishCall(const SExpression &callee) {
+            Expressions args;
+            if (!check(TokenType::RIGHT_PAREN)) {
+                do {
+                    args.push_back(expression());
+                } while (match({TokenType::COMMA}));
+            }
+
+            Token par = consume(TokenType::RIGHT_PAREN, "Expect ) after callable arguments.");
+            return std::make_shared<Call>(callee, par, args);
+        }
+
+        SExpression call() {
+            SExpression expr = primary();
+
+            while (true) {
+                if (match({TokenType::LEFT_PAREN})) {
+                    expr = finishCall(expr);
+                } else {
+                    break;
+                }
+            }
+
+            return expr;
+        }
+
         SExpression unary() {
             if (match({TokenType::BANG, TokenType::MINUS})) {
                 Token op = previous();
@@ -562,7 +650,7 @@ namespace cpplox {
                 return std::make_shared<Unary>(op, right);
             }
 
-            return primary();
+            return call();
         }
 
 
@@ -829,6 +917,18 @@ namespace cpplox {
             return body;
         }
 
+        Statement returnStatement() {
+            Token keyword = previous();
+            SExpression value = nullptr;
+
+            if (!check(TokenType::SEMICOLON)) {
+                value = expression();
+            }
+
+            consume(TokenType::SEMICOLON, "Expect ; after the return statement");
+            return std::make_shared<Return>(keyword, value);
+        }
+
         Statement statement() {
             if (match({TokenType::IF})) {
                 return ifStatement();
@@ -836,6 +936,11 @@ namespace cpplox {
             if (match({TokenType::PRINT})) {
                 return printStmt();
             }
+
+            if (match({TokenType::RETURN})) {
+                return returnStatement();
+            }
+
             if (match({TokenType::WHILE})) {
                 return whileStatement();
             }
@@ -860,8 +965,27 @@ namespace cpplox {
             return std::make_shared<Var>(name, initializer);
         }
 
+        Statement funDefinition(const std::string &kind = "function") {
+            Token name = consume(TokenType::IDENTIFIER, "Expect  " + kind + " name.");
+
+            consume(TokenType::LEFT_PAREN, "Expect ( after " + kind + "name.");
+            Tokens params;
+            if (!check(TokenType::RIGHT_PAREN)) {
+                do {
+                    // limit parameters size but why?
+                    params.push_back(consume(TokenType::IDENTIFIER, "Expect parameter name"));
+                } while (match({TokenType::COMMA}));
+            }
+            consume(TokenType::RIGHT_PAREN, "Expect ) after " + kind + " parameters");
+
+            consume(TokenType::LEFT_BRACE, "Expect { before " + kind + " body.");
+            Stmts body = block();
+            return std::make_shared<Function>(name, params, body);
+        }
+
         Statement declaration() {
             try {
+                if (match({TokenType::FUN})) return funDefinition();
                 if (match({TokenType::VAR})) return varDeclaration();
 
                 return statement();
@@ -884,14 +1008,6 @@ namespace cpplox {
 
             return stmts;
         }
-
-        // SExpression parse() {
-        //     try {
-        //         return expression();
-        //     } catch (const std::logic_error &e) {
-        //         return nullptr;
-        //     }
-        // }
     };
 
     class AstPrinter : public Visitor {
@@ -991,10 +1107,15 @@ namespace cpplox {
             }
         }
 
+        static bool isNull(const std::any &x) {
+            return x.type() == typeid(std::nullptr_t);
+        }
+
         static std::string toString(const std::any &x) {
             if (isNumber(x)) return std::to_string(getNumber(x));
             if (isBoolean(x)) return (getBoolean(x) == true ? "true" : "false");
             if (isString(x)) return getString(x);
+            if (isNull(x)) return "nullptr";
             return "unknown or unsupported value"; // or call internal implementation of to string
         }
 
@@ -1011,7 +1132,6 @@ namespace cpplox {
             if (obj.type() == typeid(std::string))
                 return !std::any_cast<std::string>(obj).empty();
 
-            // default: non-empty any is truthy
             return true;
         }
 
@@ -1114,22 +1234,98 @@ namespace cpplox {
         }
     };
 
+    class Interpreter;
+
+    class LoxCallable {
+    public:
+        virtual ~LoxCallable() = default;
+
+        [[nodiscard]] virtual size_t arity() const = 0;
+
+        virtual std::any call(Interpreter &interpreter, const std::vector<std::any> &arguments) const = 0;
+    };
+
+
+    class NativeFunction : public LoxCallable {
+    public:
+        using Fn = std::function<std::any(Interpreter &, const std::vector<std::any> &)>;
+
+        NativeFunction(const size_t arity, Fn fn)
+            : arity_(arity), fn_(std::move(fn)) {
+        }
+
+        [[nodiscard]] size_t arity() const override { return arity_; }
+
+        std::any call(Interpreter &interpreter,
+                      const std::vector<std::any> &args) const override {
+            return fn_(interpreter, args);
+        }
+
+    private:
+        size_t arity_;
+        Fn fn_;
+    };
+
+    class LoxFunction : public LoxCallable {
+    public:
+        explicit LoxFunction(std::shared_ptr<Function> func) : declaration(std::move(func)) {
+        }
+
+        std::any call(Interpreter &interpreter, const std::vector<std::any> &arguments) const override;
+
+        [[nodiscard]] size_t arity() const override {
+            return declaration->params.size();
+        }
+
+    private:
+        std::shared_ptr<Function> declaration;
+    };
+
+    using Func = std::shared_ptr<Function>;
+
+    class ReturnException : public std::exception {
+    public:
+        std::any value;
+
+        explicit ReturnException(std::any value) : value(std::move(value)) {
+        }
+    };
+
     class Interpreter : public Visitor, public Stmt::Visitor {
         Environment env;
+        Environment globals;
 
-        void executeBlock(const Stmts &statements) {
-            // auto prev = std::move(env);
-            try {
-                // env = std::move(nenv);
-                for (const auto &statement: statements) {
-                    execute(statement);
-                }
-            } catch (...) {
-                // env = std::move(prev);
-                return;
+
+        std::any visitReturnStmt(Return &stmt) override {
+            std::any value = nullptr;
+            if (!Helper::isNull(stmt.value)) value = evaluate(stmt.value);
+            throw ReturnException{value};
+        }
+
+        std::any visitCallExpr(Call &expr) override {
+            const std::any callee = evaluate(expr.callee);
+
+            using Args = std::vector<std::any>;
+            Args args;
+
+            for (const auto &arg: expr.arguments) {
+                args.push_back(evaluate(arg));
             }
 
-            // env = std::move(prev);
+            try {
+                // Wrap the LoxFunction in a shared_ptr
+                auto function = std::any_cast<std::shared_ptr<LoxCallable> >(callee);
+
+                if (args.size() != function->arity()) {
+                    throw RuntimeError{};
+                }
+
+                return function->call(*this, args);
+            } catch (const std::bad_any_cast &e) {
+                throw RuntimeError{};
+            } catch (const std::bad_cast &e) {
+                throw RuntimeError{};
+            }
         }
 
         std::any visitIfStmt(const If &stmt) override {
@@ -1283,19 +1479,35 @@ namespace cpplox {
                 case TokenType::LESS_EQUAL: {
                     return Helper::isLessEqual(left, right);
                 }
-                // case TokenType::AND: {
-                //     return Helper::isAnd(left, right);
-                // }
-                // case TokenType::OR: {
-                //     return Helper::isOr(left, right);
-                // }
                 default: ;
             }
 
             return nullptr;
         }
 
+        std::any visitFunctionStmt(const Function &stmt) override {
+            auto decl = std::make_shared<Function>(stmt);
+            auto function = std::make_shared<LoxFunction>(decl);
+
+            std::shared_ptr<LoxCallable> callable = function;
+            env.define(stmt.name.getLexeme(), std::make_any<std::shared_ptr<LoxCallable> >(callable));
+
+            return nullptr;
+        }
+
     public:
+        void executeBlock(const Stmts &statements) {
+            try {
+                for (const auto &statement: statements) {
+                    execute(statement);
+                }
+            } catch (ReturnException &val) {
+                throw val;
+            } catch (...) {
+                return;
+            }
+        }
+
         void interpret(const SExpression &expr) {
             try {
                 const auto value = evaluate(expr);
@@ -1317,8 +1529,21 @@ namespace cpplox {
 
         Interpreter() {
             env = Environment{};
+            globals.define(
+                "clock",
+                std::make_shared<NativeFunction>(
+                    0,
+                    [](Interpreter &, const std::vector<std::any> &) {
+                        using namespace std::chrono;
+                        return duration<double>(
+                            system_clock::now().time_since_epoch()
+                        ).count();
+                    }
+                )
+            );
         }
     };
+
 
     void run(const std::string_view &code) {
         Scanner scanner{code};
@@ -1338,6 +1563,22 @@ namespace cpplox {
         Interpreter interpreter;
 
         interpreter.interpret(stmts);
+    }
+
+    std::any LoxFunction::call(Interpreter &interpreter, const std::vector<std::any> &arguments) const {
+        // Now the compiler knows that interpreter has an executeBlock method
+        Environment env;
+        for (size_t i = 0; i < declaration->params.size(); i++) {
+            env.define(declaration->params[i].getLexeme(), arguments.at(i));
+        }
+
+        try {
+            interpreter.executeBlock(declaration->body);
+        } catch (ReturnException &e) {
+            return e.value;
+        }
+
+        return nullptr;
     }
 
     void runFile(const std::string &fileName) {
