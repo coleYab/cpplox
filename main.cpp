@@ -17,7 +17,7 @@ namespace cpplox {
     // TODO: find some way to remove this hasError_ or abstract it away in some class cpplox
     bool hasError_{false};
 
-    void report(const int line, const std::string &where, const std::string &message) {
+    void report(const size_t line, const std::string &where, const std::string &message) {
         std::cerr << "[" << line << "]: ERROR " << where << ": " << message << std::endl;
     }
 
@@ -27,7 +27,7 @@ namespace cpplox {
     class CompilationError : public std::exception {
     };
 
-    void error(const int line, const std::string &message) {
+    void error(const size_t line, const std::string &message) {
         report(line, "", message);
         hasError_ = true;
     }
@@ -55,10 +55,10 @@ namespace cpplox {
         TokenType type_;
         std::string lexeme_;
         std::any literal_;
-        int line_;
+        size_t line_;
 
     public:
-        Token(const TokenType type, std::string lexeme, std::any literal, const int line) : type_(type),
+        Token(const TokenType type, std::string lexeme, std::any literal, const size_t line) : type_(type),
             lexeme_(std::move(lexeme)), literal_(std::move(literal)), line_(line) {
         }
 
@@ -74,7 +74,7 @@ namespace cpplox {
             return lexeme_;
         }
 
-        [[nodiscard]] int getLine() const {
+        [[nodiscard]] size_t getLine() const {
             return line_;
         }
 
@@ -126,28 +126,28 @@ namespace cpplox {
 
     class Binary : public Expr {
     public:
-        Binary(std::shared_ptr<Expr> left, Token op, std::shared_ptr<Expr> right) : left(std::move(left)),
-            op(std::move(op)), right(std::move(right)) {
+        Binary(std::shared_ptr<Expr> left, Token op, std::shared_ptr<Expr> right) : left_(std::move(left)),
+            op_(std::move(op)), right_(std::move(right)) {
         }
 
         std::any accept(Visitor &visitor) override {
             return visitor.visitBinaryExpr(*this);
         }
 
-        const std::shared_ptr<Expr> left;
-        const Token op;
-        const std::shared_ptr<Expr> right;
+        const std::shared_ptr<Expr> left_;
+        const Token op_;
+        const std::shared_ptr<Expr> right_;
     };
 
     class Call : public Expr {
     public:
-        std::shared_ptr<Expr> callee;
-        Token par;
-        std::vector<std::shared_ptr<Expr> > arguments;
+        std::shared_ptr<Expr> callee_;
+        Token par_;
+        std::vector<std::shared_ptr<Expr> > arguments_;
 
         Call(std::shared_ptr<Expr> callee, Token par,
-             std::vector<std::shared_ptr<Expr> > arguments) : callee(std::move(callee)), par(std::move(par)),
-                                                              arguments(std::move(arguments)) {
+             std::vector<std::shared_ptr<Expr> > arguments) : callee_(std::move(callee)), par_(std::move(par)),
+                                                              arguments_(std::move(arguments)) {
         }
 
         std::any accept(Visitor &visitor) override {
@@ -158,36 +158,36 @@ namespace cpplox {
 
     class Grouping : public Expr {
     public:
-        explicit Grouping(std::shared_ptr<Expr> expression) : expression(std::move(expression)) {
+        explicit Grouping(std::shared_ptr<Expr> expression) : expression_(std::move(expression)) {
         }
 
         std::any accept(Visitor &visitor) override {
             return visitor.visitGroupingExpr(*this);
         }
 
-        const std::shared_ptr<Expr> expression;
+        const std::shared_ptr<Expr> expression_;
     };
 
     class Literal : public Expr {
     public:
-        explicit Literal(std::any value) : value(std::move(value)) {
+        explicit Literal(std::any value) : value_(std::move(value)) {
         }
 
         std::any accept(Visitor &visitor) override {
             return visitor.visitLiteralExpr(*this);
         }
 
-        const std::any value;
+        const std::any value_;
     };
 
     class Logical : public Expr {
     public:
-        std::shared_ptr<Expr> left;
-        Token op;
-        std::shared_ptr<Expr> right;
+        std::shared_ptr<Expr> left_;
+        Token op_;
+        std::shared_ptr<Expr> right_;
 
-        Logical(std::shared_ptr<Expr> left, Token op, std::shared_ptr<Expr> right) : left(std::move(left)),
-            op(std::move(op)), right(std::move(right)) {
+        Logical(std::shared_ptr<Expr> left, Token op, std::shared_ptr<Expr> right) : left_(std::move(left)),
+            op_(std::move(op)), right_(std::move(right)) {
         }
 
         std::any accept(Visitor &visitor) override {
@@ -197,22 +197,22 @@ namespace cpplox {
 
     class Unary : public Expr {
     public:
-        Unary(Token op, std::shared_ptr<Expr> right) : op(std::move(op)), right(std::move(right)) {
+        Unary(Token op, std::shared_ptr<Expr> right) : op_(std::move(op)), right_(std::move(right)) {
         }
 
         std::any accept(Visitor &visitor) override {
             return visitor.visitUnaryExpr(*this);
         }
 
-        const Token op;
-        const std::shared_ptr<Expr> right;
+        const Token op_;
+        const std::shared_ptr<Expr> right_;
     };
 
     class Variable : public Expr {
     public:
-        Token name;
+        Token name_;
 
-        explicit Variable(Token name) : name(std::move(name)) {
+        explicit Variable(Token name) : name_(std::move(name)) {
         }
 
         std::any accept(Visitor &visitor) override {
@@ -222,10 +222,10 @@ namespace cpplox {
 
     class Assign : public Expr {
     public:
-        Token name;
-        std::shared_ptr<Expr> value;
+        Token name_;
+        std::shared_ptr<Expr> value_;
 
-        Assign(Token name, std::shared_ptr<Expr> value) : name(std::move(name)), value(std::move(value)) {
+        Assign(Token name, std::shared_ptr<Expr> value) : name_(std::move(name)), value_(std::move(value)) {
         }
 
         std::any accept(Visitor &visitor) override {
@@ -274,10 +274,10 @@ namespace cpplox {
 
     class Return : public Stmt {
     public:
-        Token keyword;
-        std::shared_ptr<Expr> value;
+        Token keyword_;
+        std::shared_ptr<Expr> value_;
 
-        Return(Token keyword, std::shared_ptr<Expr> value) : keyword(std::move(keyword)), value(std::move(value)) {
+        Return(Token keyword, std::shared_ptr<Expr> value) : keyword_(std::move(keyword)), value_(std::move(value)) {
         }
 
         std::any accept(Visitor &visitor) override {
@@ -288,9 +288,9 @@ namespace cpplox {
 
     class Expression : public Stmt {
     public:
-        std::shared_ptr<Expr> expression;
+        std::shared_ptr<Expr> expression_;
 
-        explicit Expression(std::shared_ptr<Expr> expression) : expression(std::move(expression)) {
+        explicit Expression(std::shared_ptr<Expr> expression) : expression_(std::move(expression)) {
         }
 
         std::any accept(Stmt::Visitor &visitor) override {
@@ -300,9 +300,9 @@ namespace cpplox {
 
     class Print : public Stmt {
     public:
-        std::shared_ptr<Expr> expression;
+        std::shared_ptr<Expr> expression_;
 
-        explicit Print(std::shared_ptr<Expr> expression) : expression(std::move(expression)) {
+        explicit Print(std::shared_ptr<Expr> expression) : expression_(std::move(expression)) {
         }
 
         std::any accept(Stmt::Visitor &visitor) override {
@@ -312,12 +312,12 @@ namespace cpplox {
 
     class Function : public Stmt {
     public:
-        Token name;
-        std::vector<Token> params;
-        std::vector<std::shared_ptr<Stmt> > body;
+        Token name_;
+        std::vector<Token> params_;
+        std::vector<std::shared_ptr<Stmt> > body_;
 
-        Function(Token name, Tokens params, std::vector<std::shared_ptr<Stmt> > body) : name(std::move(name)),
-            params(std::move(params)), body(std::move(body)) {
+        Function(Token name, Tokens params, std::vector<std::shared_ptr<Stmt> > body) : name_(std::move(name)),
+            params_(std::move(params)), body_(std::move(body)) {
         }
 
         std::any accept(Visitor &visitor) override {
@@ -327,11 +327,11 @@ namespace cpplox {
 
     class Var : public Stmt {
     public:
-        Token name;
-        std::shared_ptr<Expr> initializer;
+        Token name_;
+        std::shared_ptr<Expr> initializer_;
 
-        Var(Token name, std::shared_ptr<Expr> initializer) : name(std::move(name)),
-                                                             initializer(std::move(initializer)) {
+        Var(Token name, std::shared_ptr<Expr> initializer) : name_(std::move(name)),
+                                                             initializer_(std::move(initializer)) {
         }
 
         std::any accept(Stmt::Visitor &visitor) override {
@@ -341,9 +341,9 @@ namespace cpplox {
 
     class Block : public Stmt {
     public:
-        std::vector<std::shared_ptr<Stmt> > statements;
+        std::vector<std::shared_ptr<Stmt> > statements_;
 
-        explicit Block(std::vector<std::shared_ptr<Stmt> > statements) : statements(std::move(statements)) {
+        explicit Block(std::vector<std::shared_ptr<Stmt> > statements) : statements_(std::move(statements)) {
         }
 
         std::any accept(Stmt::Visitor &visitor) override {
@@ -353,13 +353,13 @@ namespace cpplox {
 
     class If : public Stmt {
     public:
-        std::shared_ptr<Expr> condition;
-        std::shared_ptr<Stmt> thenBranch;
-        std::shared_ptr<Stmt> elseBranch;
+        std::shared_ptr<Expr> condition_;
+        std::shared_ptr<Stmt> thenBranch_;
+        std::shared_ptr<Stmt> elseBranch_;
 
         If(std::shared_ptr<Expr> condition, std::shared_ptr<Stmt> thenBranch,
-           std::shared_ptr<Stmt> elseBranch) : condition(std::move(condition)), thenBranch(std::move(thenBranch)),
-                                               elseBranch(std::move(elseBranch)) {
+           std::shared_ptr<Stmt> elseBranch) : condition_(std::move(condition)), thenBranch_(std::move(thenBranch)),
+                                               elseBranch_(std::move(elseBranch)) {
         }
 
         std::any accept(Stmt::Visitor &visitor) override {
@@ -369,11 +369,11 @@ namespace cpplox {
 
     class While : public Stmt {
     public:
-        std::shared_ptr<Expr> condition;
-        std::shared_ptr<Stmt> body;
+        std::shared_ptr<Expr> condition_;
+        std::shared_ptr<Stmt> body_;
 
-        While(std::shared_ptr<Expr> condition, std::shared_ptr<Stmt> body) : condition(std::move(condition)),
-                                                                             body(std::move(body)) {
+        While(std::shared_ptr<Expr> condition, std::shared_ptr<Stmt> body) : condition_(std::move(condition)),
+                                                                             body_(std::move(body)) {
         }
 
         std::any accept(Stmt::Visitor &visitor) override {
@@ -389,16 +389,16 @@ namespace cpplox {
     class LoxFunction;
 
     class Scanner {
-        int start_{0};
-        int current_{0};
-        int line_{1};
+        size_t start_{0};
+        size_t current_{0};
+        size_t line_{1};
         std::string_view code_;
         Tokens tokens_;
 
         std::map<std::string, TokenType> keywords_;
 
         [[nodiscard]] bool isEnd() const {
-            return current_ >= static_cast<int>(code_.size());
+            return current_ >= code_.size();
         }
 
         char advance() {
@@ -427,7 +427,7 @@ namespace cpplox {
             }
 
             advance();
-            const int size = current_ - start_ - 2;
+            const size_t size = current_ - start_ - 2;
             std::string lexeme{code_.substr(start_ + 1, size)};
             addToken(TokenType::STRING, lexeme);
         }
@@ -442,7 +442,7 @@ namespace cpplox {
         }
 
         [[nodiscard]] char peekNext() const {
-            if (current_ + 1 >= static_cast<int>(code_.length())) return '\0';
+            if (current_ + 1 >= code_.length()) return '\0';
             return code_[current_ + 1];
         }
 
@@ -453,7 +453,7 @@ namespace cpplox {
                 while (isDigit(peek())) advance();
             }
 
-            const int digSize = current_ - start_;
+            const size_t digSize = current_ - start_;
             const std::string lexeme{code_.substr(start_, digSize)};
             addToken(TokenType::NUMBER, std::stod(lexeme));
         }
@@ -463,7 +463,7 @@ namespace cpplox {
         }
 
         void addToken(TokenType type, const std::any &literal) {
-            const int tokenSize = current_ - start_;
+            const size_t tokenSize = current_ - start_;
             std::string text{code_.substr(start_, tokenSize)};
             tokens_.emplace_back(type, text, literal, line_);
         }
@@ -471,7 +471,7 @@ namespace cpplox {
 
         void identifier() {
             while (isAlphaNum(peek())) advance();
-            const int identifierSize = current_ - start_;
+            const size_t identifierSize = current_ - start_;
             const std::string identifier{code_.substr(start_, identifierSize)};
             if (keywords_.contains(identifier)) {
                 addToken(keywords_[identifier]);
@@ -590,7 +590,7 @@ namespace cpplox {
 
     class Parser {
         Tokens tokens_;
-        int current{0};
+        size_t current{0};
 
         SExpression term() {
             SExpression expr = factor();
@@ -772,7 +772,7 @@ namespace cpplox {
                 SExpression value = assignment();
 
                 if (auto v = dynamic_cast<Variable *>(expression.get())) {
-                    return std::make_shared<Assign>(v->name, value);
+                    return std::make_shared<Assign>(v->name_, value);
                 }
             }
 
@@ -1016,33 +1016,33 @@ namespace cpplox {
         }
 
         std::any visitBinaryExpr(Binary &e) override {
-            return parenthesize(e.op.getLexeme(), {e.left, e.right});
+            return parenthesize(e.op_.getLexeme(), {e.left_, e.right_});
         }
 
         std::any visitGroupingExpr(Grouping &e) override {
-            return parenthesize("group", {e.expression});
+            return parenthesize("group", {e.expression_});
         }
 
         std::any visitLiteralExpr(Literal &e) override {
-            if (!e.value.has_value()) return std::string("nil");
+            if (!e.value_.has_value()) return std::string("nil");
 
-            if (e.value.type() == typeid(std::string)) {
-                return std::any_cast<std::string>(e.value);
+            if (e.value_.type() == typeid(std::string)) {
+                return std::any_cast<std::string>(e.value_);
             }
 
-            if (e.value.type() == typeid(double)) {
-                return std::to_string(std::any_cast<double>(e.value));
+            if (e.value_.type() == typeid(double)) {
+                return std::to_string(std::any_cast<double>(e.value_));
             }
 
-            if (e.value.type() == typeid(bool)) {
-                return std::any_cast<bool>(e.value) ? std::string("true") : std::string("false");
+            if (e.value_.type() == typeid(bool)) {
+                return std::any_cast<bool>(e.value_) ? std::string("true") : std::string("false");
             }
 
             return std::string("?");
         }
 
         std::any visitUnaryExpr(Unary &e) override {
-            return parenthesize(e.op.getLexeme(), {e.right});
+            return parenthesize(e.op_.getLexeme(), {e.right_});
         }
 
     private:
@@ -1189,70 +1189,12 @@ namespace cpplox {
         }
     };
 
-    // class Environment {
-    // public:
-    //     std::unique_ptr<Environment> enclosing;
-    //     std::map<std::string, std::any> values;
-    //
-    //     [[nodiscard]] std::any getAt([[maybe_unused]] int distance, const std::string &name) const {
-    //         // return ancestor(distance).values.at(name);
-    //         return values.at(name);
-    //     }
-    //
-    //     void assignAt([[maybe_unused]] int dist, const std::string &name, const std::any &value) {
-    //         // ancestor(dist).assign(name, value);
-    //         assign(name, value);
-    //     }
-    //
-    //     // [[nodiscard]] Environment &ancestor([[maybe_unused]] int distance) const {
-    //     // }
-    //
-    //     explicit Environment(std::unique_ptr<Environment> enclosing = nullptr) : enclosing(std::move(enclosing)),
-    //         values(std::map<std::string, std::any>{}) {
-    //     }
-    //
-    //     void define(const std::string &name, std::any value) {
-    //         // if (values.contains(name)) {
-    //         //     throw RuntimeError{};
-    //         // }
-    //
-    //         values[name] = std::move(value);
-    //     }
-    //
-    //     [[nodiscard]] std::any get(const std::string &name) const {
-    //         if (values.contains(name)) {
-    //             return values.at(name);
-    //         }
-    //
-    //         if (enclosing != nullptr) {
-    //             return enclosing->get(name);
-    //         }
-    //
-    //         throw RuntimeError();
-    //     }
-    //
-    //     void assign(const std::string &name, const std::any &value) {
-    //         if (values.contains(name)) {
-    //             values[name] = value;
-    //             return;
-    //         }
-    //
-    //         if (enclosing != nullptr) {
-    //             enclosing->assign(name, value);
-    //             return;
-    //         }
-    //
-    //         throw RuntimeError();
-    //     }
-    // };
-    //
-
     class Environment {
         std::shared_ptr<Environment> enclosing_;
         std::map<std::string, std::any> values_;
 
     public:
-        [[nodiscard]] std::any getAt(const int distance, const std::string &name) {
+        [[nodiscard]] std::any getAt(const size_t distance, const std::string &name) {
             if (distance == 0) {
                 return get(name);
             }
@@ -1261,7 +1203,7 @@ namespace cpplox {
             return env->get(name);
         }
 
-        void assignAt(const int distance, const std::string &name, const std::any &value) {
+        void assignAt(const size_t distance, const std::string &name, const std::any &value) {
             if (distance == 0) {
                 assign(name, value);
                 return;
@@ -1271,7 +1213,7 @@ namespace cpplox {
             return env->assign(name, value);
         }
 
-        [[nodiscard]] std::shared_ptr<Environment> &ancestor(const int distance) {
+        [[nodiscard]] std::shared_ptr<Environment> &ancestor(const size_t distance) {
             auto &next = enclosing_;
             for (size_t i = 0; i < distance - 1; i++) next = next->enclosing_;
             return next;
@@ -1364,7 +1306,7 @@ namespace cpplox {
         std::any call(Interpreter &interpreter, const std::vector<std::any> &arguments) const override;
 
         [[nodiscard]] size_t arity() const override {
-            return declaration->params.size();
+            return declaration->params_.size();
         }
 
     private:
@@ -1375,30 +1317,30 @@ namespace cpplox {
 
     class ReturnException : public std::exception {
     public:
-        std::any value;
+        std::any value_;
 
-        explicit ReturnException(std::any value) : value(std::move(value)) {
+        explicit ReturnException(std::any value) : value_(std::move(value)) {
         }
     };
 
     class Interpreter : public Visitor, public Stmt::Visitor {
         EnvironmentPointer environment_;
         EnvironmentPointer globals_;
-        std::map<std::string, int> locals_;
+        std::map<std::string, size_t> locals_;
 
         std::any visitReturnStmt(const Return &stmt) override {
             std::any value = nullptr;
-            if (!Helper::isNull(stmt.value)) value = evaluate(stmt.value);
+            if (!Helper::isNull(stmt.value_)) value = evaluate(stmt.value_);
             throw ReturnException{value};
         }
 
         std::any visitCallExpr(Call &expr) override {
-            const std::any callee = evaluate(expr.callee);
+            const std::any callee = evaluate(expr.callee_);
 
             using Args = std::vector<std::any>;
             Args args;
 
-            for (const auto &arg: expr.arguments) {
+            for (const auto &arg: expr.arguments_) {
                 args.push_back(evaluate(arg));
             }
 
@@ -1421,93 +1363,93 @@ namespace cpplox {
         }
 
         std::any visitIfStmt(const If &stmt) override {
-            if (Helper::isTruthy(evaluate(stmt.condition))) {
-                execute(stmt.thenBranch);
-            } else if (stmt.elseBranch != nullptr) {
-                execute(stmt.elseBranch);
+            if (Helper::isTruthy(evaluate(stmt.condition_))) {
+                execute(stmt.thenBranch_);
+            } else if (stmt.elseBranch_ != nullptr) {
+                execute(stmt.elseBranch_);
             }
 
             return nullptr;
         }
 
         std::any visitLogicalExpr(Logical &expr) override {
-            std::any left = evaluate(expr.left);
+            std::any left = evaluate(expr.left_);
 
-            if (expr.op.getType() == TokenType::AND) {
+            if (expr.op_.getType() == TokenType::AND) {
                 if (!Helper::isTruthy(left)) return left;
             } else {
                 if (Helper::isTruthy(left)) return left;
             }
 
-            return evaluate(expr.right);
+            return evaluate(expr.right_);
         }
 
         std::any visitBlockStmt(const Block &block) override {
-            executeBlock(block.statements, std::make_shared<Environment>(environment_));
+            executeBlock(block.statements_, std::make_shared<Environment>(environment_));
             return nullptr;
         }
 
         std::any visitLiteralExpr(Literal &exp) override {
-            return exp.value;
+            return exp.value_;
         }
 
         std::any visitWhileStmt(const While &stmt) override {
-            while (Helper::isTruthy(evaluate(stmt.condition))) {
-                execute(stmt.body);
+            while (Helper::isTruthy(evaluate(stmt.condition_))) {
+                execute(stmt.body_);
             }
 
             return nullptr;
         }
 
         std::any visitSExpressionStmt(const Expression &stmt) override {
-            evaluate(stmt.expression);
+            evaluate(stmt.expression_);
             return nullptr;
         }
 
         std::any visitVariableExpr(Variable &expr) override {
-            return lookUpVariable(expr.name, expr);
+            return lookUpVariable(expr.name_, expr);
         }
 
         [[nodiscard]] std::any lookUpVariable(const Token &name, const Variable &expr) const {
-            if (locals_.contains(expr.name.getLexeme()) == false) {
+            if (locals_.contains(expr.name_.getLexeme()) == false) {
                 return globals_->get(name.getLexeme());
             }
 
-            const int distance = locals_.at(expr.name.getLexeme());
+            const size_t distance = locals_.at(expr.name_.getLexeme());
             return environment_->getAt(distance, name.getLexeme());
         }
 
         std::any visitAssignExpr(Assign &expr) override {
-            std::any value = evaluate(expr.value);
-            if (!locals_.contains(expr.name.getLexeme())) {
-                globals_->assign(expr.name.getLexeme(), value);
+            std::any value = evaluate(expr.value_);
+            if (!locals_.contains(expr.name_.getLexeme())) {
+                globals_->assign(expr.name_.getLexeme(), value);
                 return value;
             }
 
-            const int dist = locals_[expr.name.getLexeme()];
-            environment_->assignAt(dist, expr.name.getLexeme(), value);
+            const size_t dist = locals_[expr.name_.getLexeme()];
+            environment_->assignAt(dist, expr.name_.getLexeme(), value);
 
             return value;
         }
 
         std::any visitVarStmt(const Var &stmt) override {
             std::any value = nullptr;
-            if (stmt.initializer != nullptr) {
-                value = evaluate(stmt.initializer);
+            if (stmt.initializer_ != nullptr) {
+                value = evaluate(stmt.initializer_);
             }
 
-            environment_->define(stmt.name.getLexeme(), value);
+            environment_->define(stmt.name_.getLexeme(), value);
             return nullptr;
         }
 
         std::any visitPrintStmt(const Print &stmt) override {
-            const std::any value = evaluate(stmt.expression);
+            const std::any value = evaluate(stmt.expression_);
             std::cout << Helper::toString(value) << std::endl;
             return nullptr;
         }
 
         std::any visitGroupingExpr(Grouping &exp) override {
-            return evaluate(exp.expression);
+            return evaluate(exp.expression_);
         }
 
         std::any evaluate(const SExpression &expr) {
@@ -1515,9 +1457,9 @@ namespace cpplox {
         }
 
         std::any visitUnaryExpr(Unary &expr) override {
-            const std::any right = evaluate(expr.right);
+            const std::any right = evaluate(expr.right_);
 
-            switch (expr.op.getType()) {
+            switch (expr.op_.getType()) {
                 case TokenType::MINUS: {
                     return -std::any_cast<double>(right);
                 }
@@ -1535,14 +1477,14 @@ namespace cpplox {
         }
 
         std::any visitBinaryExpr(Binary &expr) override {
-            const std::any left = evaluate(expr.left);
-            const std::any right = evaluate(expr.right);
+            const std::any left = evaluate(expr.left_);
+            const std::any right = evaluate(expr.right_);
 
             auto get_double = [](const std::any &value) {
                 return std::any_cast<double>(value);
             };
 
-            switch (expr.op.getType()) {
+            switch (expr.op_.getType()) {
                 case TokenType::MINUS: {
                     if (!Helper::isSameType(left, right)) {
                         // TODO: panic
@@ -1597,17 +1539,17 @@ namespace cpplox {
             const auto function = std::make_shared<LoxFunction>(decl);
 
             std::shared_ptr<LoxCallable> callable = function;
-            environment_->define(stmt.name.getLexeme(), std::make_any<std::shared_ptr<LoxCallable> >(callable));
+            environment_->define(stmt.name_.getLexeme(), std::make_any<std::shared_ptr<LoxCallable> >(callable));
 
             return nullptr;
         }
 
     public:
-        void resolve(const std::string &name, const int depth) {
+        void resolve(const std::string &name, const size_t depth) {
             locals_[name] = depth;
         }
 
-        void executeBlock(const Stmts &statements, const EnvironmentPointer& environment) {
+        void executeBlock(const Stmts &statements, const EnvironmentPointer &environment) {
             const auto previous = this->environment_;
             this->environment_ = environment;
             try {
@@ -1708,7 +1650,7 @@ namespace cpplox {
         std::any visitBlockStmt(const Block &stmt) override {
             beginScope();
 
-            resolve(stmt.statements);
+            resolve(stmt.statements_);
 
             endScope();
             return nullptr;
@@ -1738,13 +1680,13 @@ namespace cpplox {
         }
 
         std::any visitVarStmt(const Var &stmt) override {
-            declare(stmt.name);
+            declare(stmt.name_);
 
-            if (stmt.initializer != nullptr) {
-                resolve(stmt.initializer);
+            if (stmt.initializer_ != nullptr) {
+                resolve(stmt.initializer_);
             }
 
-            define(stmt.name);
+            define(stmt.name_);
             return nullptr;
         }
 
@@ -1764,36 +1706,35 @@ namespace cpplox {
         }
 
         std::any visitVariableExpr(Variable &expr) override {
-            const std::string &name = expr.name.getLexeme();
+            const std::string &name = expr.name_.getLexeme();
             const bool isNotInitialized = !scopes_.empty() && scopes_.back().contains(name) && scopes_.back()[name] ==
                                           false;
             if (isNotInitialized) {
-                error(expr.name.getLine(), "Can't read local variable in its own initializer");
+                error(expr.name_.getLine(), "Can't read local variable in its own initializer");
             }
 
-            resolveLocal(expr, expr.name);
+            resolveLocal(expr, expr.name_);
             return nullptr;
         }
 
-        void resolveLocal([[maybe_unused]] const Expr &expr, const Token &name) {
+        void resolveLocal([[maybe_unused]] const Expr &expr, const Token &name) const {
             for (int i = static_cast<int>(scopes_.size() - 1); i >= 0; i--) {
-                const bool containsName = scopes_[i].contains(name.getLexeme());
-                if (containsName) {
-                    interpreter_->resolve(name.getLexeme(), static_cast<int>(scopes_.size()) - 1 - i);
+                if (scopes_[static_cast<size_t>(i)].contains(name.getLexeme())) {
+                    interpreter_->resolve(name.getLexeme(), scopes_.size() - 1 - static_cast<size_t>(i));
                     return;
                 }
             }
         }
 
         std::any visitAssignExpr(Assign &expr) override {
-            resolve(expr.value);
-            resolveLocal(expr, expr.name);
+            resolve(expr.value_);
+            resolveLocal(expr, expr.name_);
             return nullptr;
         }
 
         std::any visitFunctionStmt(const Function &stmt) override {
-            declare(stmt.name);
-            define(stmt.name);
+            declare(stmt.name_);
+            define(stmt.name_);
 
             resolveFunction(stmt, FunctionType::FUNCTION);
 
@@ -1805,12 +1746,12 @@ namespace cpplox {
             currentFunction = functionType;
             beginScope();
 
-            for (const Token &param: stmt.params) {
+            for (const Token &param: stmt.params_) {
                 declare(param);
                 define(param);
             }
 
-            resolve(stmt.body);
+            resolve(stmt.body_);
 
             endScope();
 
@@ -1818,56 +1759,56 @@ namespace cpplox {
         }
 
         std::any visitSExpressionStmt(const Expression &stmt) override {
-            resolve(stmt.expression);
+            resolve(stmt.expression_);
             return nullptr;
         }
 
         std::any visitIfStmt(const If &stmt) override {
-            resolve(stmt.condition);
-            resolve(stmt.thenBranch);
+            resolve(stmt.condition_);
+            resolve(stmt.thenBranch_);
 
-            if (stmt.elseBranch != nullptr) {
-                resolve(stmt.elseBranch);
+            if (stmt.elseBranch_ != nullptr) {
+                resolve(stmt.elseBranch_);
             }
 
             return nullptr;
         }
 
         std::any visitPrintStmt(const Print &stmt) override {
-            resolve(stmt.expression);
+            resolve(stmt.expression_);
             return nullptr;
         }
 
         std::any visitReturnStmt(const Return &stmt) override {
             if (currentFunction == FunctionType::NONE) {
-                error(stmt.keyword.getLine(), "Can't return from a top level function");
+                error(stmt.keyword_.getLine(), "Can't return from a top level function");
                 return nullptr;
             }
 
-            if (stmt.value != nullptr) {
-                resolve(stmt.value);
+            if (stmt.value_ != nullptr) {
+                resolve(stmt.value_);
             }
 
             return nullptr;
         }
 
         std::any visitWhileStmt(const While &stmt) override {
-            resolve(stmt.condition);
-            resolve(stmt.body);
+            resolve(stmt.condition_);
+            resolve(stmt.body_);
             return nullptr;
         }
 
         std::any visitBinaryExpr(Binary &expr) override {
-            resolve(expr.left);
-            resolve(expr.right);
+            resolve(expr.left_);
+            resolve(expr.right_);
             return nullptr;
         }
 
 
         std::any visitCallExpr(Call &expr) override {
-            resolve(expr.callee);
+            resolve(expr.callee_);
 
-            for (const auto &arg: expr.arguments) {
+            for (const auto &arg: expr.arguments_) {
                 resolve(arg);
             }
 
@@ -1875,7 +1816,7 @@ namespace cpplox {
         }
 
         std::any visitGroupingExpr(Grouping &expr) override {
-            resolve(expr.expression);
+            resolve(expr.expression_);
             return nullptr;
         }
 
@@ -1884,13 +1825,13 @@ namespace cpplox {
         }
 
         std::any visitLogicalExpr(Logical &expr) override {
-            resolve(expr.left);
-            resolve(expr.right);
+            resolve(expr.left_);
+            resolve(expr.right_);
             return nullptr;
         }
 
         std::any visitUnaryExpr(Unary &expr) override {
-            resolve(expr.right);
+            resolve(expr.right_);
             return nullptr;
         }
     };
@@ -1916,15 +1857,15 @@ namespace cpplox {
     }
 
     std::any LoxFunction::call(Interpreter &interpreter, const std::vector<std::any> &arguments) const {
-        EnvironmentPointer environment { std::make_shared<Environment>() };
-        for (size_t i = 0; i < declaration->params.size(); i++) {
-            environment->define(declaration->params[i].getLexeme(), arguments.at(i));
+        EnvironmentPointer environment{std::make_shared<Environment>()};
+        for (size_t i = 0; i < declaration->params_.size(); i++) {
+            environment->define(declaration->params_[i].getLexeme(), arguments.at(i));
         }
 
         try {
-            interpreter.executeBlock(declaration->body, environment);
+            interpreter.executeBlock(declaration->body_, environment);
         } catch (ReturnException &e) {
-            return e.value;
+            return e.value_;
         }
 
         return nullptr;
