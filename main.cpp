@@ -1,26 +1,26 @@
 #include <algorithm>
-#include <iostream>
-#include <map>
 #include <any>
-#include <utility>
-#include <vector>
 #include <cassert>
 #include <complex>
-#include <fstream>
 #include <filesystem>
-#include <string_view>
-#include "includes/utils.h"
+#include <fstream>
 #include <functional>
+#include <iostream>
+#include <map>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+#include "includes/utils.h"
 
 namespace cpplox {
     // TODO: find some way to remove this hasError_ or abstract it away in some class cpplox
     bool hasError_{false};
 
     void report(const int line, const std::string &where, const std::string &message) {
-        std::cerr << "[" << line << "] Error " << where << ": " << message << std::endl;
+        std::cerr << "[" << line << "]: ERROR " << where << ": " << message << std::endl;
     }
 
-    // TODO: throw these errors rather than maintaining this thing
     class RuntimeError : public std::exception {
     };
 
@@ -85,7 +85,6 @@ namespace cpplox {
 
     using Tokens = std::vector<Token>;
 
-
     class Binary;
     class Grouping;
     class Literal;
@@ -100,28 +99,28 @@ namespace cpplox {
     public:
         virtual ~Visitor() = default;
 
-        virtual std::any visitBinaryExpr(Binary &E) = 0;
+        virtual std::any visitBinaryExpr(Binary &) = 0;
 
-        virtual std::any visitGroupingExpr(Grouping &E) = 0;
+        virtual std::any visitGroupingExpr(Grouping &) = 0;
 
-        virtual std::any visitLiteralExpr(Literal &E) = 0;
+        virtual std::any visitLiteralExpr(Literal &) = 0;
 
-        virtual std::any visitUnaryExpr(Unary &E) = 0;
+        virtual std::any visitUnaryExpr(Unary &) = 0;
 
-        virtual std::any visitVariableExpr(Variable &E) = 0;
+        virtual std::any visitVariableExpr(Variable &) = 0;
 
-        virtual std::any visitAssignExpr(Assign &E) = 0;
+        virtual std::any visitAssignExpr(Assign &) = 0;
 
-        virtual std::any visitLogicalExpr(Logical &E) = 0;
+        virtual std::any visitLogicalExpr(Logical &) = 0;
 
-        virtual std::any visitCallExpr(Call &E) = 0;
+        virtual std::any visitCallExpr(Call &) = 0;
     };
 
     class Expr {
     public:
         virtual ~Expr() = default;
 
-        virtual std::any accept(Visitor &visitor) = 0;
+        virtual std::any accept(Visitor &) = 0;
     };
 
 
@@ -262,7 +261,7 @@ namespace cpplox {
 
             virtual std::any visitFunctionStmt(const Function &) = 0;
 
-            virtual std::any visitReturnStmt(Return &) = 0;
+            virtual std::any visitReturnStmt(const Return &) = 0;
 
             virtual std::any visitWhileStmt(const While &) = 0;
         };
@@ -872,7 +871,7 @@ namespace cpplox {
         }
 
 
-        // this funciton is changing for (int i = 0; i < n; i++) to
+        // this function is changing the statement for (var i = 0; i < n; i++) to
         // var i = 0; while (i < n) { i += 1;}
         Statement forStatement() {
             consume(TokenType::LEFT_PAREN, "Expect ( after for statement");
@@ -1190,49 +1189,140 @@ namespace cpplox {
         }
     };
 
-    class Environment {
-    public:
-        std::unique_ptr<Environment> enclosing;
-        std::map<std::string, std::any> values;
+    // class Environment {
+    // public:
+    //     std::unique_ptr<Environment> enclosing;
+    //     std::map<std::string, std::any> values;
+    //
+    //     [[nodiscard]] std::any getAt([[maybe_unused]] int distance, const std::string &name) const {
+    //         // return ancestor(distance).values.at(name);
+    //         return values.at(name);
+    //     }
+    //
+    //     void assignAt([[maybe_unused]] int dist, const std::string &name, const std::any &value) {
+    //         // ancestor(dist).assign(name, value);
+    //         assign(name, value);
+    //     }
+    //
+    //     // [[nodiscard]] Environment &ancestor([[maybe_unused]] int distance) const {
+    //     // }
+    //
+    //     explicit Environment(std::unique_ptr<Environment> enclosing = nullptr) : enclosing(std::move(enclosing)),
+    //         values(std::map<std::string, std::any>{}) {
+    //     }
+    //
+    //     void define(const std::string &name, std::any value) {
+    //         // if (values.contains(name)) {
+    //         //     throw RuntimeError{};
+    //         // }
+    //
+    //         values[name] = std::move(value);
+    //     }
+    //
+    //     [[nodiscard]] std::any get(const std::string &name) const {
+    //         if (values.contains(name)) {
+    //             return values.at(name);
+    //         }
+    //
+    //         if (enclosing != nullptr) {
+    //             return enclosing->get(name);
+    //         }
+    //
+    //         throw RuntimeError();
+    //     }
+    //
+    //     void assign(const std::string &name, const std::any &value) {
+    //         if (values.contains(name)) {
+    //             values[name] = value;
+    //             return;
+    //         }
+    //
+    //         if (enclosing != nullptr) {
+    //             enclosing->assign(name, value);
+    //             return;
+    //         }
+    //
+    //         throw RuntimeError();
+    //     }
+    // };
+    //
 
-        explicit Environment(std::unique_ptr<Environment> enclosing = nullptr) : enclosing(std::move(enclosing)),
-            values(std::map<std::string, std::any>{}) {
+    class Environment {
+        std::shared_ptr<Environment> enclosing_;
+        std::map<std::string, std::any> values_;
+
+    public:
+        [[nodiscard]] std::any getAt(const int distance, const std::string &name) {
+            if (distance == 0) {
+                return get(name);
+            }
+
+            const auto &env = ancestor(distance);
+            return env->get(name);
         }
 
-        void define(const std::string &name, std::any value) {
-            // if (values.contains(name)) {
-            //     throw RuntimeError{};
-            // }
+        void assignAt(const int distance, const std::string &name, const std::any &value) {
+            if (distance == 0) {
+                assign(name, value);
+                return;
+            }
 
-            values[name] = std::move(value);
+            const auto &env = ancestor(distance);
+            return env->assign(name, value);
+        }
+
+        [[nodiscard]] std::shared_ptr<Environment> &ancestor(const int distance) {
+            auto &next = enclosing_;
+            for (size_t i = 0; i < distance - 1; i++) next = next->enclosing_;
+            return next;
+        }
+
+        explicit Environment(std::shared_ptr<Environment> enclosing = nullptr) : enclosing_{std::move(enclosing)} {
+        }
+
+        void define(const std::string &name, const std::any &value) {
+            if (values_.contains(name)) {
+                throw std::runtime_error{"variable with this name is already defined"};
+            }
+
+            values_[name] = value;
+        }
+
+        void defineIf(const std::string &name, const std::any &value) {
+            try {
+                define(name, value);
+            } catch (...) {
+            }
         }
 
         [[nodiscard]] std::any get(const std::string &name) const {
-            if (values.contains(name)) {
-                return values.at(name);
+            if (values_.contains(name)) {
+                return values_.at(name);
             }
 
-            if (enclosing != nullptr) {
-                return enclosing->get(name);
+            if (enclosing_ != nullptr) {
+                return enclosing_->get(name);
             }
 
-            throw RuntimeError();
+            throw std::runtime_error{"failed to get the required variable"};
         }
 
         void assign(const std::string &name, const std::any &value) {
-            if (values.contains(name)) {
-                values[name] = value;
+            if (values_.contains(name)) {
+                values_[name] = value;
                 return;
             }
 
-            if (enclosing != nullptr) {
-                enclosing->assign(name, value);
+            if (enclosing_ != nullptr) {
+                enclosing_->assign(name, value);
                 return;
             }
 
-            throw RuntimeError();
+            throw std::runtime_error{"failed to get the required variable"};
         }
     };
+
+    using EnvironmentPointer = std::shared_ptr<Environment>;
 
     class Interpreter;
 
@@ -1292,11 +1382,11 @@ namespace cpplox {
     };
 
     class Interpreter : public Visitor, public Stmt::Visitor {
-        Environment env;
-        Environment globals;
+        EnvironmentPointer environment_;
+        EnvironmentPointer globals_;
+        std::map<std::string, int> locals_;
 
-
-        std::any visitReturnStmt(Return &stmt) override {
+        std::any visitReturnStmt(const Return &stmt) override {
             std::any value = nullptr;
             if (!Helper::isNull(stmt.value)) value = evaluate(stmt.value);
             throw ReturnException{value};
@@ -1314,17 +1404,19 @@ namespace cpplox {
 
             try {
                 // Wrap the LoxFunction in a shared_ptr
-                auto function = std::any_cast<std::shared_ptr<LoxCallable> >(callee);
+                const auto function = std::any_cast<std::shared_ptr<LoxCallable> >(callee);
 
                 if (args.size() != function->arity()) {
-                    throw RuntimeError{};
+                    throw std::runtime_error{"function arguments and function parametres count must match!"};
                 }
 
                 return function->call(*this, args);
             } catch (const std::bad_any_cast &e) {
-                throw RuntimeError{};
+                const auto fun = std::any_cast<std::shared_ptr<NativeFunction> >(callee);
+                return fun->call(*this, args);
+                throw std::runtime_error{"unable to cast the current function"};
             } catch (const std::bad_cast &e) {
-                throw RuntimeError{};
+                throw std::runtime_error{"unable to cast the current function"};
             }
         }
 
@@ -1351,8 +1443,7 @@ namespace cpplox {
         }
 
         std::any visitBlockStmt(const Block &block) override {
-            executeBlock(block.statements);
-            // executeBlock(block.statements, Environment{std::make_unique<Environment>(env)});
+            executeBlock(block.statements, std::make_shared<Environment>(environment_));
             return nullptr;
         }
 
@@ -1374,12 +1465,28 @@ namespace cpplox {
         }
 
         std::any visitVariableExpr(Variable &expr) override {
-            return env.get(expr.name.getLexeme());
+            return lookUpVariable(expr.name, expr);
+        }
+
+        [[nodiscard]] std::any lookUpVariable(const Token &name, const Variable &expr) const {
+            if (locals_.contains(expr.name.getLexeme()) == false) {
+                return globals_->get(name.getLexeme());
+            }
+
+            const int distance = locals_.at(expr.name.getLexeme());
+            return environment_->getAt(distance, name.getLexeme());
         }
 
         std::any visitAssignExpr(Assign &expr) override {
             std::any value = evaluate(expr.value);
-            env.assign(expr.name.getLexeme(), value);
+            if (!locals_.contains(expr.name.getLexeme())) {
+                globals_->assign(expr.name.getLexeme(), value);
+                return value;
+            }
+
+            const int dist = locals_[expr.name.getLexeme()];
+            environment_->assignAt(dist, expr.name.getLexeme(), value);
+
             return value;
         }
 
@@ -1389,7 +1496,7 @@ namespace cpplox {
                 value = evaluate(stmt.initializer);
             }
 
-            env.define(stmt.name.getLexeme(), value);
+            environment_->define(stmt.name.getLexeme(), value);
             return nullptr;
         }
 
@@ -1487,25 +1594,34 @@ namespace cpplox {
 
         std::any visitFunctionStmt(const Function &stmt) override {
             auto decl = std::make_shared<Function>(stmt);
-            auto function = std::make_shared<LoxFunction>(decl);
+            const auto function = std::make_shared<LoxFunction>(decl);
 
             std::shared_ptr<LoxCallable> callable = function;
-            env.define(stmt.name.getLexeme(), std::make_any<std::shared_ptr<LoxCallable> >(callable));
+            environment_->define(stmt.name.getLexeme(), std::make_any<std::shared_ptr<LoxCallable> >(callable));
 
             return nullptr;
         }
 
     public:
-        void executeBlock(const Stmts &statements) {
+        void resolve(const std::string &name, const int depth) {
+            locals_[name] = depth;
+        }
+
+        void executeBlock(const Stmts &statements, const EnvironmentPointer& environment) {
+            const auto previous = this->environment_;
+            this->environment_ = environment;
             try {
                 for (const auto &statement: statements) {
                     execute(statement);
                 }
-            } catch (ReturnException &val) {
-                throw val;
-            } catch (...) {
-                return;
+            } catch (ReturnException &) {
+                this->environment_ = previous;
+                throw;
+            } catch (std::exception &e) {
+                std::cout << "Error while executing block statement " << e.what() << std::endl;
             }
+
+            this->environment_ = previous;
         }
 
         void interpret(const SExpression &expr) {
@@ -1522,14 +1638,15 @@ namespace cpplox {
                 for (const auto &stmt: stmts) {
                     execute(stmt);
                 }
-            } catch (...) {
-                std::cerr << "ERROR: happened" << std::endl;
+            } catch (std::exception &e) {
+                std::cerr << "ERROR: " << e.what() << std::endl;
             }
         }
 
         Interpreter() {
-            env = Environment{};
-            globals.define(
+            environment_ = std::make_shared<Environment>();
+            globals_ = std::make_shared<Environment>();
+            globals_->defineIf(
                 "clock",
                 std::make_shared<NativeFunction>(
                     0,
@@ -1541,9 +1658,242 @@ namespace cpplox {
                     }
                 )
             );
+
+
+            globals_->defineIf(
+                "clock",
+                std::make_shared<NativeFunction>(
+                    0,
+                    [](Interpreter &, const std::vector<std::any> &) {
+                        using namespace std::chrono;
+                        return duration<double>(
+                            system_clock::now().time_since_epoch()
+                        ).count();
+                    }
+                )
+            );
+
+            globals_->defineIf(
+                "exit",
+                std::make_shared<NativeFunction>(
+                    0,
+                    [](Interpreter &, const std::vector<std::any> &) -> double {
+                        exit(0);
+                        return 0;
+                    }
+                )
+            );
         }
     };
 
+    enum class FunctionType {
+        NONE,
+        FUNCTION
+    };
+
+
+    using SInterpreter = std::shared_ptr<Interpreter>;
+
+    class Resolver : public Visitor, public Stmt::Visitor {
+    private:
+        SInterpreter interpreter_;
+        std::vector<std::map<std::string, bool> > scopes_;
+        FunctionType currentFunction = FunctionType::NONE;
+
+    public:
+        explicit Resolver(SInterpreter interpreter) : interpreter_(std::move(interpreter)) {
+            scopes_.emplace_back();
+        }
+
+        std::any visitBlockStmt(const Block &stmt) override {
+            beginScope();
+
+            resolve(stmt.statements);
+
+            endScope();
+            return nullptr;
+        }
+
+        void resolve(const Stmts &stmts) {
+            for (const auto &stmt: stmts) {
+                resolve(stmt);
+            }
+        }
+
+        void resolve(const Statement &stmt) {
+            if (stmt == nullptr) return;
+            stmt->accept(*this);
+        }
+
+        void resolve(const SExpression &expr) {
+            expr->accept(*this);
+        }
+
+        void beginScope() {
+            scopes_.push_back(std::map<std::string, bool>{});
+        }
+
+        void endScope() {
+            scopes_.pop_back();
+        }
+
+        std::any visitVarStmt(const Var &stmt) override {
+            declare(stmt.name);
+
+            if (stmt.initializer != nullptr) {
+                resolve(stmt.initializer);
+            }
+
+            define(stmt.name);
+            return nullptr;
+        }
+
+        void declare(const Token &name) {
+            if (scopes_.empty()) return;
+            auto &scope = scopes_.back();
+            if (scope.contains(name.getLexeme())) {
+                error(name.getLine(), "Already declared a variable with this name.");
+            }
+
+            scope[name.getLexeme()] = false;
+        }
+
+        void define(const Token &name) {
+            if (scopes_.empty()) return;
+            scopes_.back()[name.getLexeme()] = true;
+        }
+
+        std::any visitVariableExpr(Variable &expr) override {
+            const std::string &name = expr.name.getLexeme();
+            const bool isNotInitialized = !scopes_.empty() && scopes_.back().contains(name) && scopes_.back()[name] ==
+                                          false;
+            if (isNotInitialized) {
+                error(expr.name.getLine(), "Can't read local variable in its own initializer");
+            }
+
+            resolveLocal(expr, expr.name);
+            return nullptr;
+        }
+
+        void resolveLocal([[maybe_unused]] const Expr &expr, const Token &name) {
+            for (int i = static_cast<int>(scopes_.size() - 1); i >= 0; i--) {
+                const bool containsName = scopes_[i].contains(name.getLexeme());
+                if (containsName) {
+                    interpreter_->resolve(name.getLexeme(), static_cast<int>(scopes_.size()) - 1 - i);
+                    return;
+                }
+            }
+        }
+
+        std::any visitAssignExpr(Assign &expr) override {
+            resolve(expr.value);
+            resolveLocal(expr, expr.name);
+            return nullptr;
+        }
+
+        std::any visitFunctionStmt(const Function &stmt) override {
+            declare(stmt.name);
+            define(stmt.name);
+
+            resolveFunction(stmt, FunctionType::FUNCTION);
+
+            return nullptr;
+        }
+
+        void resolveFunction(const Function &stmt, FunctionType functionType) {
+            auto enclosing = currentFunction;
+            currentFunction = functionType;
+            beginScope();
+
+            for (const Token &param: stmt.params) {
+                declare(param);
+                define(param);
+            }
+
+            resolve(stmt.body);
+
+            endScope();
+
+            currentFunction = enclosing;
+        }
+
+        std::any visitSExpressionStmt(const Expression &stmt) override {
+            resolve(stmt.expression);
+            return nullptr;
+        }
+
+        std::any visitIfStmt(const If &stmt) override {
+            resolve(stmt.condition);
+            resolve(stmt.thenBranch);
+
+            if (stmt.elseBranch != nullptr) {
+                resolve(stmt.elseBranch);
+            }
+
+            return nullptr;
+        }
+
+        std::any visitPrintStmt(const Print &stmt) override {
+            resolve(stmt.expression);
+            return nullptr;
+        }
+
+        std::any visitReturnStmt(const Return &stmt) override {
+            if (currentFunction == FunctionType::NONE) {
+                error(stmt.keyword.getLine(), "Can't return from a top level function");
+                return nullptr;
+            }
+
+            if (stmt.value != nullptr) {
+                resolve(stmt.value);
+            }
+
+            return nullptr;
+        }
+
+        std::any visitWhileStmt(const While &stmt) override {
+            resolve(stmt.condition);
+            resolve(stmt.body);
+            return nullptr;
+        }
+
+        std::any visitBinaryExpr(Binary &expr) override {
+            resolve(expr.left);
+            resolve(expr.right);
+            return nullptr;
+        }
+
+
+        std::any visitCallExpr(Call &expr) override {
+            resolve(expr.callee);
+
+            for (const auto &arg: expr.arguments) {
+                resolve(arg);
+            }
+
+            return nullptr;
+        }
+
+        std::any visitGroupingExpr(Grouping &expr) override {
+            resolve(expr.expression);
+            return nullptr;
+        }
+
+        std::any visitLiteralExpr([[maybe_unused]] Literal &expr) override {
+            return nullptr;
+        }
+
+        std::any visitLogicalExpr(Logical &expr) override {
+            resolve(expr.left);
+            resolve(expr.right);
+            return nullptr;
+        }
+
+        std::any visitUnaryExpr(Unary &expr) override {
+            resolve(expr.right);
+            return nullptr;
+        }
+    };
 
     void run(const std::string_view &code) {
         Scanner scanner{code};
@@ -1552,28 +1902,27 @@ namespace cpplox {
             exit(2);
         }
 
-
         Parser parser{tokens};
         const auto stmts = parser.parse();
 
-        // const SExpression expr = parser.parse();
-        // AstPrinter printer;
-        // std::cout << printer.print(expr) << std::endl;
+        const auto interpreter = std::make_shared<Interpreter>();
+        Resolver resolver{interpreter};
 
-        Interpreter interpreter;
+        // hasError_ = false;
+        resolver.resolve(stmts);
 
-        interpreter.interpret(stmts);
+        // if (hasError_) { return; }
+        interpreter->interpret(stmts);
     }
 
     std::any LoxFunction::call(Interpreter &interpreter, const std::vector<std::any> &arguments) const {
-        // Now the compiler knows that interpreter has an executeBlock method
-        Environment env;
+        EnvironmentPointer environment { std::make_shared<Environment>() };
         for (size_t i = 0; i < declaration->params.size(); i++) {
-            env.define(declaration->params[i].getLexeme(), arguments.at(i));
+            environment->define(declaration->params[i].getLexeme(), arguments.at(i));
         }
 
         try {
-            interpreter.executeBlock(declaration->body);
+            interpreter.executeBlock(declaration->body, environment);
         } catch (ReturnException &e) {
             return e.value;
         }
