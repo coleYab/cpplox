@@ -518,8 +518,7 @@ namespace cpplox {
                         while (peek() != '\n' && !isEnd()) advance();
                     } else if (match('*')) {
                         while (!isEnd()) {
-                            bool commentEnd = peek() == '*' && peekNext() == '/';
-                            if (commentEnd) {
+                            if (peek() == '*' && peekNext() == '/') {
                                 break;
                             }
 
@@ -814,16 +813,15 @@ namespace cpplox {
             return peek().getType() == type;
         }
 
-        bool match(const TokenTypes &tokens) {
-            for (const auto &token: tokens) {
-                if (check(token)) {
-                    advance();
-                    return true;
-                }
-            }
+            bool match(const TokenTypes &tokens) {
+                const auto ok = std::ranges::any_of(tokens, [this](const auto &token) {
+                    return check(token);
+                });
 
-            return false;
-        }
+                if (ok) advance();
+
+                return ok;
+            }
 
         Statement printStmt() {
             SExpression value = expression();
@@ -960,7 +958,7 @@ namespace cpplox {
                 initializer = expression();
             }
 
-            consume(TokenType::SEMICOLON, "Expect ; after delcaration.");
+            consume(TokenType::SEMICOLON, "Expect ; after declaration.");
             return std::make_shared<Var>(name, initializer);
         }
 
@@ -1299,8 +1297,10 @@ namespace cpplox {
     };
 
     class LoxFunction : public LoxCallable {
+        EnvironmentPointer closure_;
     public:
-        explicit LoxFunction(std::shared_ptr<Function> func) : declaration(std::move(func)) {
+        explicit LoxFunction(std::shared_ptr<Function> func, EnvironmentPointer closure) : closure_(std::move(closure)),
+            declaration(std::move(func)) {
         }
 
         std::any call(Interpreter &interpreter, const std::vector<std::any> &arguments) const override;
@@ -1326,7 +1326,8 @@ namespace cpplox {
     class Interpreter : public Visitor, public Stmt::Visitor {
         EnvironmentPointer environment_;
         EnvironmentPointer globals_;
-        std::map<std::string, size_t> locals_;
+        std::map<Expr*, size_t> locals_; // migration to expr* because the expressions accessing the local variable should be
+        // explicitly known if you are using std::string in which case it will become a big issue
 
         std::any visitReturnStmt(const Return &stmt) override {
             std::any value = nullptr;
@@ -1349,15 +1350,15 @@ namespace cpplox {
                 const auto function = std::any_cast<std::shared_ptr<LoxCallable> >(callee);
 
                 if (args.size() != function->arity()) {
-                    throw std::runtime_error{"function arguments and function parametres count must match!"};
+                    throw std::runtime_error{"function arguments and function parameters count must match!"};
                 }
 
                 return function->call(*this, args);
-            } catch (const std::bad_any_cast &e) {
+            } catch (const std::bad_any_cast &) {
                 const auto fun = std::any_cast<std::shared_ptr<NativeFunction> >(callee);
                 return fun->call(*this, args);
                 throw std::runtime_error{"unable to cast the current function"};
-            } catch (const std::bad_cast &e) {
+            } catch (const std::bad_cast &) {
                 throw std::runtime_error{"unable to cast the current function"};
             }
         }
@@ -1407,26 +1408,26 @@ namespace cpplox {
         }
 
         std::any visitVariableExpr(Variable &expr) override {
-            return lookUpVariable(expr.name_, expr);
+            return lookUpVariable(expr.name_,&expr);
         }
 
-        [[nodiscard]] std::any lookUpVariable(const Token &name, const Variable &expr) const {
-            if (locals_.contains(expr.name_.getLexeme()) == false) {
+        [[nodiscard]] std::any lookUpVariable(const Token &name, Variable *expr) const {
+            if (!locals_.contains(expr)) {
                 return globals_->get(name.getLexeme());
             }
 
-            const size_t distance = locals_.at(expr.name_.getLexeme());
+            const size_t distance = locals_.at(expr);
             return environment_->getAt(distance, name.getLexeme());
         }
 
         std::any visitAssignExpr(Assign &expr) override {
             std::any value = evaluate(expr.value_);
-            if (!locals_.contains(expr.name_.getLexeme())) {
+            if (!locals_.contains(&expr)) {
                 globals_->assign(expr.name_.getLexeme(), value);
                 return value;
             }
 
-            const size_t dist = locals_[expr.name_.getLexeme()];
+            const size_t dist = locals_[&expr];
             environment_->assignAt(dist, expr.name_.getLexeme(), value);
 
             return value;
@@ -1536,7 +1537,7 @@ namespace cpplox {
 
         std::any visitFunctionStmt(const Function &stmt) override {
             auto decl = std::make_shared<Function>(stmt);
-            const auto function = std::make_shared<LoxFunction>(decl);
+            const auto function = std::make_shared<LoxFunction>(decl, environment_);
 
             std::shared_ptr<LoxCallable> callable = function;
             environment_->define(stmt.name_.getLexeme(), std::make_any<std::shared_ptr<LoxCallable> >(callable));
@@ -1545,8 +1546,12 @@ namespace cpplox {
         }
 
     public:
-        void resolve(const std::string &name, const size_t depth) {
-            locals_[name] = depth;
+        EnvironmentPointer &getEnvironment() {
+            return environment_;
+        }
+
+        void resolve(Expr *expr, const size_t depth) {
+            locals_[expr] = depth;
         }
 
         void executeBlock(const Stmts &statements, const EnvironmentPointer &environment) {
@@ -1588,19 +1593,6 @@ namespace cpplox {
         Interpreter() {
             environment_ = std::make_shared<Environment>();
             globals_ = std::make_shared<Environment>();
-            globals_->defineIf(
-                "clock",
-                std::make_shared<NativeFunction>(
-                    0,
-                    [](Interpreter &, const std::vector<std::any> &) {
-                        using namespace std::chrono;
-                        return duration<double>(
-                            system_clock::now().time_since_epoch()
-                        ).count();
-                    }
-                )
-            );
-
 
             globals_->defineIf(
                 "clock",
@@ -1672,7 +1664,7 @@ namespace cpplox {
         }
 
         void beginScope() {
-            scopes_.push_back(std::map<std::string, bool>{});
+            scopes_.emplace_back();
         }
 
         void endScope() {
@@ -1717,10 +1709,10 @@ namespace cpplox {
             return nullptr;
         }
 
-        void resolveLocal([[maybe_unused]] const Expr &expr, const Token &name) const {
+        void resolveLocal(Expr &expr, const Token &name) const {
             for (int i = static_cast<int>(scopes_.size() - 1); i >= 0; i--) {
                 if (scopes_[static_cast<size_t>(i)].contains(name.getLexeme())) {
-                    interpreter_->resolve(name.getLexeme(), scopes_.size() - 1 - static_cast<size_t>(i));
+                    interpreter_->resolve(&expr, scopes_.size() - 1 - static_cast<size_t>(i));
                     return;
                 }
             }
@@ -1857,7 +1849,7 @@ namespace cpplox {
     }
 
     std::any LoxFunction::call(Interpreter &interpreter, const std::vector<std::any> &arguments) const {
-        EnvironmentPointer environment{std::make_shared<Environment>()};
+        const auto environment{std::make_shared<Environment>(closure_)};
         for (size_t i = 0; i < declaration->params_.size(); i++) {
             environment->define(declaration->params_[i].getLexeme(), arguments.at(i));
         }
