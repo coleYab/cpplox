@@ -93,6 +93,10 @@ namespace cpplox {
     class Assign;
     class Logical;
     class Call;
+    class Get;
+    class Set;
+    class This;
+    class Super;
     class Return;
 
     class Visitor {
@@ -114,6 +118,14 @@ namespace cpplox {
         virtual std::any visitLogicalExpr(Logical &) = 0;
 
         virtual std::any visitCallExpr(Call &) = 0;
+
+        virtual std::any visitGetExpr(Get &) = 0;
+
+        virtual std::any visitSetExpr(Set &) = 0;
+
+        virtual std::any visitThisExpr(This &) = 0;
+
+        virtual std::any visitSuperExpr(Super &) = 0;
     };
 
     class Expr {
@@ -155,6 +167,59 @@ namespace cpplox {
         }
     };
 
+
+    class Get : public Expr {
+    public:
+        std::shared_ptr<Expr> object_;
+        Token name_;
+
+        Get(std::shared_ptr<Expr> object, Token name) : object_(std::move(object)), name_(std::move(name)) {
+        }
+
+        std::any accept(Visitor &visitor) override {
+            return visitor.visitGetExpr(*this);
+        }
+    };
+
+    class Set : public Expr {
+    public:
+        std::shared_ptr<Expr> object_;
+        Token name_;
+        std::shared_ptr<Expr> value_;
+
+        Set(std::shared_ptr<Expr> object, Token name, std::shared_ptr<Expr> value) : object_(std::move(object)),
+            name_(std::move(name)), value_(std::move(value)) {
+        }
+
+        std::any accept(Visitor &visitor) override {
+            return visitor.visitSetExpr(*this);
+        }
+    };
+
+    class This : public Expr {
+    public:
+        Token keyword_;
+
+        explicit This(Token keyword) : keyword_(std::move(keyword)) {
+        }
+
+        std::any accept(Visitor &visitor) override {
+            return visitor.visitThisExpr(*this);
+        }
+    };
+
+    class Super : public Expr {
+    public:
+        Token keyword_;
+        Token method_;
+
+        Super(Token keyword, Token method) : keyword_(std::move(keyword)), method_(std::move(method)) {
+        }
+
+        std::any accept(Visitor &visitor) override {
+            return visitor.visitSuperExpr(*this);
+        }
+    };
 
     class Grouping : public Expr {
     public:
@@ -242,6 +307,7 @@ namespace cpplox {
     class If;
     class While;
     class Function;
+    class ClassStmt;
 
     class Stmt {
     public:
@@ -264,6 +330,8 @@ namespace cpplox {
             virtual std::any visitReturnStmt(const Return &) = 0;
 
             virtual std::any visitWhileStmt(const While &) = 0;
+
+            virtual std::any visitClassStmt(const ClassStmt &) = 0;
         };
 
         virtual ~Stmt() = default;
@@ -322,6 +390,22 @@ namespace cpplox {
 
         std::any accept(Visitor &visitor) override {
             return visitor.visitFunctionStmt(*this);
+        }
+    };
+
+    class ClassStmt : public Stmt {
+    public:
+        Token name_;
+        std::shared_ptr<Variable> superclass_;
+        std::vector<std::shared_ptr<Function> > methods_;
+
+        ClassStmt(Token name, std::shared_ptr<Variable> superclass,
+                  std::vector<std::shared_ptr<Function> > methods) : name_(std::move(name)),
+            superclass_(std::move(superclass)), methods_(std::move(methods)) {
+        }
+
+        std::any accept(Visitor &visitor) override {
+            return visitor.visitClassStmt(*this);
         }
     };
 
@@ -633,6 +717,9 @@ namespace cpplox {
             while (true) {
                 if (match({TokenType::LEFT_PAREN})) {
                     expr = finishCall(expr);
+                } else if (match({TokenType::DOT})) {
+                    Token name = consume(TokenType::IDENTIFIER, "Expect property name after '.'.");
+                    expr = std::make_shared<Get>(expr, name);
                 } else {
                     break;
                 }
@@ -675,6 +762,17 @@ namespace cpplox {
 
             if (match({TokenType::IDENTIFIER})) {
                 return std::make_shared<Variable>(previous());
+            }
+
+            if (match({TokenType::THIS})) {
+                return std::make_shared<This>(previous());
+            }
+
+            if (match({TokenType::SUPER})) {
+                Token keyword = previous();
+                consume(TokenType::DOT, "Expect '.' after 'super'.");
+                Token method = consume(TokenType::IDENTIFIER, "Expect superclass method name.");
+                return std::make_shared<Super>(keyword, method);
             }
 
             if (match({TokenType::LEFT_PAREN})) {
@@ -772,6 +870,9 @@ namespace cpplox {
 
                 if (auto v = dynamic_cast<Variable *>(expression.get())) {
                     return std::make_shared<Assign>(v->name_, value);
+                }
+                if (auto g = dynamic_cast<Get *>(expression.get())) {
+                    return std::make_shared<Set>(g->object_, g->name_, value);
                 }
             }
 
@@ -980,8 +1081,30 @@ namespace cpplox {
             return std::make_shared<Function>(name, params, body);
         }
 
+        Statement classDeclaration() {
+            Token name = consume(TokenType::IDENTIFIER, "Expect class name.");
+
+            std::shared_ptr<Variable> superclass = nullptr;
+            if (match({TokenType::LESS})) {
+                consume(TokenType::IDENTIFIER, "Expect superclass name.");
+                superclass = std::make_shared<Variable>(previous());
+            }
+
+            consume(TokenType::LEFT_BRACE, "Expect '{' before class body.");
+
+            std::vector<std::shared_ptr<Function>> methods;
+            while (!check(TokenType::RIGHT_BRACE) && !isEnd()) {
+                methods.push_back(std::dynamic_pointer_cast<Function>(funDefinition("method")));
+            }
+
+            consume(TokenType::RIGHT_BRACE, "Expect '}' after class body.");
+
+            return std::make_shared<ClassStmt>(name, superclass, methods);
+        }
+
         Statement declaration() {
             try {
+                if (match({TokenType::CLASS})) return classDeclaration();
                 if (match({TokenType::FUN})) return funDefinition();
                 if (match({TokenType::VAR})) return varDeclaration();
 
@@ -1193,28 +1316,19 @@ namespace cpplox {
 
     public:
         [[nodiscard]] std::any getAt(const size_t distance, const std::string &name) {
-            if (distance == 0) {
-                return get(name);
+            auto env = this;
+            for (size_t i = 0; i < distance; i++) {
+                env = env->enclosing_.get();
             }
-
-            const auto &env = ancestor(distance);
             return env->get(name);
         }
 
         void assignAt(const size_t distance, const std::string &name, const std::any &value) {
-            if (distance == 0) {
-                assign(name, value);
-                return;
+            auto env = this;
+            for (size_t i = 0; i < distance; i++) {
+                env = env->enclosing_.get();
             }
-
-            const auto &env = ancestor(distance);
             return env->assign(name, value);
-        }
-
-        [[nodiscard]] std::shared_ptr<Environment> &ancestor(const size_t distance) {
-            auto &next = enclosing_;
-            for (size_t i = 0; i < distance - 1; i++) next = next->enclosing_;
-            return next;
         }
 
         explicit Environment(std::shared_ptr<Environment> enclosing = nullptr) : enclosing_{std::move(enclosing)} {
@@ -1244,7 +1358,7 @@ namespace cpplox {
                 return enclosing_->get(name);
             }
 
-            throw std::runtime_error{"failed to get the required variable"};
+            throw std::runtime_error{"failed to get variable: " + name};
         }
 
         void assign(const std::string &name, const std::any &value) {
@@ -1258,7 +1372,7 @@ namespace cpplox {
                 return;
             }
 
-            throw std::runtime_error{"failed to get the required variable"};
+            throw std::runtime_error{"failed to get variable: " + name};
         }
     };
 
@@ -1296,6 +1410,8 @@ namespace cpplox {
         Fn fn_;
     };
 
+    class LoxInstance;
+
     class LoxFunction : public LoxCallable {
         EnvironmentPointer closure_;
     public:
@@ -1309,11 +1425,69 @@ namespace cpplox {
             return declaration->params_.size();
         }
 
+        std::shared_ptr<LoxFunction> bind(std::shared_ptr<LoxInstance> instance);
+
     private:
         std::shared_ptr<Function> declaration;
     };
 
     using Func = std::shared_ptr<Function>;
+
+    class LoxClass : public LoxCallable, public std::enable_shared_from_this<LoxClass> {
+        std::string name_;
+        std::shared_ptr<LoxClass> superclass_;
+        std::map<std::string, std::shared_ptr<LoxFunction> > methods_;
+    public:
+        LoxClass(std::string name, std::shared_ptr<LoxClass> superclass,
+                 std::map<std::string, std::shared_ptr<LoxFunction> > methods)
+            : name_(std::move(name)), superclass_(std::move(superclass)), methods_(std::move(methods)) {
+        }
+
+        std::any call(Interpreter &interpreter, const std::vector<std::any> &arguments) const override;
+
+        [[nodiscard]] size_t arity() const override {
+            auto initializer = findMethod("init");
+            if (initializer != nullptr) return initializer->arity();
+            return 0;
+        }
+
+        std::shared_ptr<LoxFunction> findMethod(const std::string &name) const {
+            if (methods_.contains(name)) return methods_.at(name);
+            if (superclass_ != nullptr) return superclass_->findMethod(name);
+            return nullptr;
+        }
+
+        const std::string &getName() const { return name_; }
+    };
+
+    class LoxInstance : public std::enable_shared_from_this<LoxInstance> {
+        std::shared_ptr<LoxClass> class_;
+        std::map<std::string, std::any> fields_;
+    public:
+        explicit LoxInstance(std::shared_ptr<LoxClass> klass) : class_(std::move(klass)) {
+        }
+
+        std::any get(const Token &name) {
+            if (fields_.contains(name.getLexeme())) {
+                return fields_[name.getLexeme()];
+            }
+
+            auto method = class_->findMethod(name.getLexeme());
+            if (method != nullptr) {
+                return std::make_any<std::shared_ptr<LoxCallable> >(method->bind(shared_from_this()));
+            }
+
+            throw RuntimeError{};
+        }
+
+        void set(const Token &name, const std::any &value) {
+            fields_[name.getLexeme()] = value;
+        }
+
+        std::string toString() const {
+            return class_->getName() + " instance";
+        }
+    };
 
     class ReturnException : public std::exception {
     public:
@@ -1345,21 +1519,24 @@ namespace cpplox {
                 args.push_back(evaluate(arg));
             }
 
+            // Try LoxCallable (functions), then NativeFunction, then LoxClass
             try {
-                // Wrap the LoxFunction in a shared_ptr
                 const auto function = std::any_cast<std::shared_ptr<LoxCallable> >(callee);
-
                 if (args.size() != function->arity()) {
                     throw std::runtime_error{"function arguments and function parameters count must match!"};
                 }
-
                 return function->call(*this, args);
             } catch (const std::bad_any_cast &) {
-                const auto fun = std::any_cast<std::shared_ptr<NativeFunction> >(callee);
-                return fun->call(*this, args);
-                throw std::runtime_error{"unable to cast the current function"};
-            } catch (const std::bad_cast &) {
-                throw std::runtime_error{"unable to cast the current function"};
+                try {
+                    const auto fun = std::any_cast<std::shared_ptr<NativeFunction> >(callee);
+                    return fun->call(*this, args);
+                } catch (const std::bad_any_cast &) {
+                    const auto klass = std::any_cast<std::shared_ptr<LoxClass> >(callee);
+                    if (args.size() != klass->arity()) {
+                        throw std::runtime_error{"function arguments and function parameters count must match!"};
+                    }
+                    return klass->call(*this, args);
+                }
             }
         }
 
@@ -1411,7 +1588,7 @@ namespace cpplox {
             return lookUpVariable(expr.name_,&expr);
         }
 
-        [[nodiscard]] std::any lookUpVariable(const Token &name, Variable *expr) const {
+        [[nodiscard]] std::any lookUpVariable(const Token &name, Expr *expr) const {
             if (!locals_.contains(expr)) {
                 return globals_->get(name.getLexeme());
             }
@@ -1445,7 +1622,7 @@ namespace cpplox {
 
         std::any visitPrintStmt(const Print &stmt) override {
             const std::any value = evaluate(stmt.expression_);
-            std::cout << Helper::toString(value) << std::endl;
+            std::cout << stringify(value) << std::endl;
             return nullptr;
         }
 
@@ -1545,6 +1722,108 @@ namespace cpplox {
             return nullptr;
         }
 
+        std::any visitClassStmt(const ClassStmt &stmt) override {
+            std::shared_ptr<LoxClass> superclass = nullptr;
+            std::shared_ptr<Environment> previousEnv = nullptr;
+            if (stmt.superclass_ != nullptr) {
+                auto superVal = evaluate(stmt.superclass_);
+                try {
+                    auto callable = std::any_cast<std::shared_ptr<LoxCallable> >(superVal);
+                    superclass = std::dynamic_pointer_cast<LoxClass>(callable);
+                } catch (const std::bad_any_cast &) {
+                    throw RuntimeError{};
+                }
+                if (superclass == nullptr) {
+                    throw RuntimeError{};
+                }
+            }
+
+            environment_->define(stmt.name_.getLexeme(), nullptr);
+
+            if (stmt.superclass_ != nullptr) {
+                previousEnv = environment_;
+                environment_ = std::make_shared<Environment>(previousEnv);
+                environment_->define("super", std::make_any<std::shared_ptr<LoxClass> >(superclass));
+            }
+
+            std::map<std::string, std::shared_ptr<LoxFunction> > methods;
+            for (const auto &method : stmt.methods_) {
+                auto function = std::make_shared<LoxFunction>(method, environment_);
+                methods[method->name_.getLexeme()] = function;
+            }
+
+            auto klass = std::make_shared<LoxClass>(stmt.name_.getLexeme(), superclass, methods);
+
+            if (stmt.superclass_ != nullptr) {
+                environment_ = previousEnv;
+            }
+
+            environment_->assign(stmt.name_.getLexeme(), std::make_any<std::shared_ptr<LoxCallable> >(klass));
+            return nullptr;
+        }
+
+        std::any visitGetExpr(Get &expr) override {
+            std::any object = evaluate(expr.object_);
+            try {
+                auto instance = std::any_cast<std::shared_ptr<LoxInstance> >(object);
+                return instance->get(expr.name_);
+            } catch (const std::bad_any_cast &) {
+                throw RuntimeError{};
+            }
+        }
+
+        std::any visitSetExpr(Set &expr) override {
+            std::any object = evaluate(expr.object_);
+            try {
+                auto instance = std::any_cast<std::shared_ptr<LoxInstance> >(object);
+                std::any value = evaluate(expr.value_);
+                instance->set(expr.name_, value);
+                return value;
+            } catch (const std::bad_any_cast &) {
+                throw RuntimeError{};
+            }
+        }
+
+        std::any visitThisExpr(This &expr) override {
+            return lookUpVariable(expr.keyword_, &expr);
+        }
+
+        std::any visitSuperExpr(Super &expr) override {
+            size_t distance = locals_[&expr];
+            auto superclass = std::any_cast<std::shared_ptr<LoxClass> >(environment_->getAt(distance, "super"));
+            auto object = std::any_cast<std::shared_ptr<LoxInstance> >(environment_->getAt(distance - 1, "this"));
+
+            auto method = superclass->findMethod(expr.method_.getLexeme());
+            if (method == nullptr) {
+                throw RuntimeError{};
+            }
+
+            return std::make_any<std::shared_ptr<LoxCallable> >(method->bind(object));
+        }
+
+        static std::string stringify(const std::any &value) {
+            if (Helper::isNull(value)) return "nil";
+            if (Helper::isNumber(value)) return Helper::toString(value);
+            if (Helper::isBoolean(value)) return Helper::toString(value);
+            if (Helper::isString(value)) return Helper::toString(value);
+            try {
+                auto instance = std::any_cast<std::shared_ptr<LoxInstance> >(value);
+                return instance->toString();
+            } catch (const std::bad_any_cast &) {
+            }
+            try {
+                auto callable = std::any_cast<std::shared_ptr<LoxCallable> >(value);
+                return "<fn>";
+            } catch (const std::bad_any_cast &) {
+            }
+            try {
+                auto klass = std::any_cast<std::shared_ptr<LoxClass> >(value);
+                return klass->getName();
+            } catch (const std::bad_any_cast &) {
+            }
+            return "?";
+        }
+
     public:
         EnvironmentPointer &getEnvironment() {
             return environment_;
@@ -1574,7 +1853,7 @@ namespace cpplox {
         void interpret(const SExpression &expr) {
             try {
                 const auto value = evaluate(expr);
-                std::cout << "Value is " << Helper::toString(value) << std::endl;
+                std::cout << "Value is " << stringify(value) << std::endl;
             } catch (std::exception &e) {
                 std::cout << "Some error happened" << e.what() << std::endl;
             }
@@ -1622,9 +1901,16 @@ namespace cpplox {
 
     enum class FunctionType {
         NONE,
-        FUNCTION
+        FUNCTION,
+        METHOD,
+        INITIALIZER
     };
 
+    enum class ClassType {
+        NONE,
+        CLASS,
+        SUBCLASS
+    };
 
     using SInterpreter = std::shared_ptr<Interpreter>;
 
@@ -1633,6 +1919,7 @@ namespace cpplox {
         SInterpreter interpreter_;
         std::vector<std::map<std::string, bool> > scopes_;
         FunctionType currentFunction = FunctionType::NONE;
+        ClassType currentClass = ClassType::NONE;
 
     public:
         explicit Resolver(SInterpreter interpreter) : interpreter_(std::move(interpreter)) {
@@ -1777,6 +2064,13 @@ namespace cpplox {
                 return nullptr;
             }
 
+            if (currentFunction == FunctionType::INITIALIZER) {
+                if (stmt.value_ != nullptr) {
+                    error(stmt.keyword_.getLine(), "Can't return a value from an initializer.");
+                }
+                return nullptr;
+            }
+
             if (stmt.value_ != nullptr) {
                 resolve(stmt.value_);
             }
@@ -1787,6 +2081,71 @@ namespace cpplox {
         std::any visitWhileStmt(const While &stmt) override {
             resolve(stmt.condition_);
             resolve(stmt.body_);
+            return nullptr;
+        }
+
+        std::any visitClassStmt(const ClassStmt &stmt) override {
+            ClassType enclosingClass = currentClass;
+            currentClass = ClassType::CLASS;
+
+            declare(stmt.name_);
+            define(stmt.name_);
+
+            if (stmt.superclass_ != nullptr) {
+                resolve(stmt.superclass_);
+                beginScope();
+                scopes_.back()["super"] = true;
+                currentClass = ClassType::SUBCLASS;
+            }
+
+            beginScope();
+            scopes_.back()["this"] = true;
+
+            for (const auto &method : stmt.methods_) {
+                FunctionType declaration = FunctionType::METHOD;
+                if (method->name_.getLexeme() == "init") {
+                    declaration = FunctionType::INITIALIZER;
+                }
+                resolveFunction(*method, declaration);
+            }
+
+            endScope(); // this
+
+            if (stmt.superclass_ != nullptr) {
+                endScope(); // super
+            }
+
+            currentClass = enclosingClass;
+            return nullptr;
+        }
+
+        std::any visitGetExpr(Get &expr) override {
+            resolve(expr.object_);
+            return nullptr;
+        }
+
+        std::any visitSetExpr(Set &expr) override {
+            resolve(expr.value_);
+            resolve(expr.object_);
+            return nullptr;
+        }
+
+        std::any visitThisExpr(This &expr) override {
+            if (currentClass == ClassType::NONE) {
+                error(expr.keyword_.getLine(), "Can't use 'this' outside of a class.");
+                return nullptr;
+            }
+            resolveLocal(expr, expr.keyword_);
+            return nullptr;
+        }
+
+        std::any visitSuperExpr(Super &expr) override {
+            if (currentClass == ClassType::NONE) {
+                error(expr.keyword_.getLine(), "Can't use 'super' outside of a class.");
+            } else if (currentClass != ClassType::SUBCLASS) {
+                error(expr.keyword_.getLine(), "Can't use 'super' in a class with no superclass.");
+            }
+            resolveLocal(expr, expr.keyword_);
             return nullptr;
         }
 
@@ -1861,6 +2220,22 @@ namespace cpplox {
         }
 
         return nullptr;
+    }
+
+    std::shared_ptr<LoxFunction> LoxFunction::bind(std::shared_ptr<LoxInstance> instance) {
+        auto environment = std::make_shared<Environment>(closure_);
+        environment->define("this", std::make_any<std::shared_ptr<LoxInstance> >(instance));
+        return std::make_shared<LoxFunction>(declaration, environment);
+    }
+
+
+    std::any LoxClass::call(Interpreter &interpreter, const std::vector<std::any> &arguments) const {
+        auto instance = std::make_shared<LoxInstance>(std::const_pointer_cast<LoxClass>(shared_from_this()));
+        auto initializer = findMethod("init");
+        if (initializer != nullptr) {
+            initializer->bind(instance)->call(interpreter, arguments);
+        }
+        return std::make_any<std::shared_ptr<LoxInstance> >(instance);
     }
 
     void runFile(const std::string &fileName) {

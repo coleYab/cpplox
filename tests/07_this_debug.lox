@@ -1,0 +1,23 @@
+// Simple this usage
+class Foo {
+  bar() {
+    print "bar called";
+  }
+}
+
+var f = Foo();
+f.bar();
+
+// This with fields
+class Point {
+  init(x, y) {
+    this.x = x;
+    this.y = y;
+  }
+  sum() {
+    return this.x + this.y;
+  }
+}
+
+var p = Point(3, 4);
+print p.sum();

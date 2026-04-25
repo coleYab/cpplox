@@ -1,0 +1,48 @@
+// Comprehensive class test
+class Greeter {
+  sayHi() {
+    print "hi!";
+  }
+}
+
+Greeter().sayHi();
+
+// Constructor with fields
+class Point {
+  init(x, y) {
+    this.x = x;
+    this.y = y;
+  }
+
+  area() {
+    return this.x * this.y;
+  }
+}
+
+var p = Point(3, 4);
+print p.area();
+
+// Class with no init
+class Empty {
+  foo() {
+    print "Empty.foo";
+  }
+}
+
+Empty().foo();
+
+// Inheritance
+class A {
+  foo() {
+    print "A.foo";
+  }
+}
+
+class B < A {
+  foo() {
+    super.foo();
+    print "B.foo";
+  }
+}
+
+B().foo();

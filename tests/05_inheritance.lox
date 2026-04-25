@@ -1,0 +1,20 @@
+// Inheritance
+class Animal {
+  init(name) {
+    this.name = name;
+  }
+
+  speak() {
+    print "Animal sound";
+  }
+}
+
+class Dog < Animal {
+  speak() {
+    super.speak();
+    print "Woof!";
+  }
+}
+
+var d = Dog("Rex");
+d.speak();

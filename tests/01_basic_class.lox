@@ -1,0 +1,14 @@
+// Basic class with methods
+class Greeter {
+  sayHi() {
+    print "hi!";
+  }
+
+  sayBye() {
+    print "bye!";
+  }
+}
+
+var g = Greeter();
+g.sayHi();
+g.sayBye();

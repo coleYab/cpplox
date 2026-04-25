@@ -1,0 +1,19 @@
+// Class with 'this' and field access
+class Person {
+  init(name) {
+    this.name = name;
+  }
+
+  greet() {
+    print this.name;
+  }
+
+  rename(newName) {
+    this.name = newName;
+  }
+}
+
+var p = Person("Alice");
+p.greet();
+p.rename("Bob");
+p.greet();

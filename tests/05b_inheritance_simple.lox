@@ -1,0 +1,11 @@
+// Minimal inheritance test
+class A {
+  foo() {
+    print "A.foo";
+  }
+}
+
+class B < A {}
+
+var b = B();
+b.foo();

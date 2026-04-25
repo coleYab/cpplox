@@ -1,0 +1,18 @@
+// Methods with return values
+class Calc {
+  init(x) {
+    this.x = x;
+  }
+
+  add(n) {
+    return this.x + n;
+  }
+
+  mul(n) {
+    return this.x * n;
+  }
+}
+
+var c = Calc(5);
+print c.add(3);
+print c.mul(4);
