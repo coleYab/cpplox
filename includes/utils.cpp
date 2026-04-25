@@ -1,4 +1,4 @@
-#include "includes/utils.h"
+#include "utils.h"
 
 namespace cpplox {
     [[nodiscard]] bool isDigit(const char c) {

@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-#include "includes/utils.h"
+#include "utils.h"
 
 namespace cpplox {
     // TODO: find some way to remove this hasError_ or abstract it away in some class cpplox
