@@ -18,7 +18,7 @@ SANITIZERS := \
 
 LDFLAGS := $(SANITIZERS)
 
-SRC      := main.cpp includes/utils.cpp
+SRC      := src/main.cpp src/interpreter.cpp src/resolver.cpp src/object.cpp includes/utils.cpp
 OUT      := build/cpplox
 
 BUILD    := build/obj
