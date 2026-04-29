@@ -140,6 +140,7 @@ class Scanner {
                     }
                     if (isEnd()) {
                         error(line_, "Unclosed multiline comment");
+                        return;
                     }
                     advance();
                     advance();

@@ -41,6 +41,22 @@ public:
         return parenthesize(e.op_.getLexeme(), {e.right_});
     }
 
+    std::any visitVariableExpr(Variable &) override { return std::string{"<var>"}; }
+    std::any visitAssignExpr(Assign &e) override { return parenthesize("=", {std::make_shared<Literal>(e.name_.getLexeme()), e.value_}); }
+    std::any visitLogicalExpr(Logical &e) override { return parenthesize(e.op_.getLexeme(), {e.left_, e.right_}); }
+    std::any visitCallExpr(Call &e) override {
+        std::vector<SExpression> exprs{e.callee_};
+        exprs.insert(exprs.end(), e.arguments_.begin(), e.arguments_.end());
+        return parenthesize("call", exprs);
+    }
+    std::any visitGetExpr(Get &e) override { return parenthesize(".", {e.object_, std::make_shared<Literal>(e.name_.getLexeme())}); }
+    std::any visitSetExpr(Set &e) override {
+        std::vector<SExpression> exprs{e.object_, std::make_shared<Literal>(e.name_.getLexeme()), e.value_};
+        return parenthesize("set", exprs);
+    }
+    std::any visitThisExpr(This &) override { return std::string{"this"}; }
+    std::any visitSuperExpr(Super &e) override { return parenthesize("super", {std::make_shared<Literal>(e.method_.getLexeme())}); }
+
 private:
     std::string parenthesize(const std::string &name, const std::vector<SExpression> &expressions) {
         std::string result = "(" + name;
