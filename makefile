@@ -25,7 +25,14 @@ BUILD    := build/obj
 OBJS     := $(SRC:%.cpp=$(BUILD)/%.o)
 DEPS     := $(OBJS:.o=.d)
 
-.PHONY: build run clean release
+TEST_SRC := src/interpreter.cpp src/resolver.cpp src/object.cpp includes/utils.cpp
+TEST_OBJ := $(TEST_SRC:%.cpp=$(BUILD)/%.o)
+
+TEST_DIR    := tests/cpp
+TEST_FILES  := $(wildcard $(TEST_DIR)/test_*.cpp)
+TEST_TARGET := build/test_runner
+
+.PHONY: build run clean release test
 
 build: $(OUT)
 
@@ -43,6 +50,13 @@ run: build
 release: CXXFLAGS := -std=c++23 -O3 -march=native -flto -DNDEBUG -I includes
 release: LDFLAGS  :=
 release: $(OUT)
+
+test: $(TEST_TARGET)
+	./$(TEST_TARGET)
+
+$(TEST_TARGET): $(TEST_OBJ) $(TEST_FILES)
+	mkdir -p $(@D)
+	$(CXX) $(CXXFLAGS) $(TEST_FILES) $(TEST_OBJ) -o $@ -lgtest -lgtest_main -lpthread
 
 clean:
 	rm -rf build
